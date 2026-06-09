@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Cores de fundo - Azul escuro */
+    --background: 219 100% 15%;
+    --foreground: 0 0% 100%;
+
+    /* Cards - Azul mais claro */
+    --card: 220 80% 18%;
+    --card-foreground: 0 0% 100%;
+
+    /* Popover */
+    --popover: 220 80% 18%;
+    --popover-foreground: 0 0% 100%;
+
+    /* Cor Primária - Azul #003399 */
+    --primary: 220 100% 30%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Cor Secundária - Dourado #daa520 */
+    --secondary: 43 75% 49%;
+    --secondary-foreground: 0 0% 0%;
+
+    /* Muted */
+    --muted: 219 50% 25%;
+    --muted-foreground: 0 0% 75%;
+
+    /* Accent - Amarelo #ffc700 */
+    --accent: 47 100% 50%;
+    --accent-foreground: 0 0% 0%;
+
+    /* Destructive */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders & Input */
+    --border: 220 50% 35%;
+    --input: 220 50% 20%;
+    --ring: 43 75% 49%;
+
+    --radius: 0.75rem;
+
+    /* Racing theme colors - Nacional Kart */
+    --racing-blue: 220 100% 30%;
+    --racing-gold: 43 75% 49%;
+    --racing-yellow: 47 100% 50%;
+    --racing-green: 114 100% 26%;
+    --racing-dark: 219 100% 15%;
+    --racing-gray: 220 10% 50%;
+    --racing-success: 114 100% 26%;
+
+    /* Gradients - Azul para Dourado */
+    --gradient-racing: linear-gradient(135deg, hsl(220 100% 30%) 0%, hsl(43 75% 49%) 100%);
+    --gradient-dark: linear-gradient(180deg, hsl(220 80% 18%) 0%, hsl(219 100% 12%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(220 80% 20%) 0%, hsl(220 80% 14%) 100%);
+
+    /* Shadows - Glow dourado */
+    --shadow-glow: 0 0 30px hsl(43 75% 49% / 0.3);
+    --shadow-card: 0 10px 40px hsl(0 0% 0% / 0.5);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-family: 'Inter', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Poppins', sans-serif;
+    font-weight: 700;
+  }
+}
+
+@layer components {
+  .racing-gradient {
+    background: var(--gradient-racing);
+  }
+
+  .racing-text-gradient {
+    background: var(--gradient-racing);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .card-racing {
+    background: var(--gradient-card);
+    border: 1px solid hsl(var(--border));
+    box-shadow: var(--shadow-card);
+  }
+
+  .glow-effect {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .racing-stripe {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .racing-stripe::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--gradient-racing);
+  }
+}
+
+@layer utilities {
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 20px hsl(43 75% 49% / 0.3);
+    }
+    50% {
+      box-shadow: 0 0 40px hsl(43 75% 49% / 0.5);
+    }
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.5s ease-out;
+  }
+
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
