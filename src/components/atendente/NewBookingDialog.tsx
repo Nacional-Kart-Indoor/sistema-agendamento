@@ -23,9 +23,23 @@ interface Props {
   onClose: () => void;
   onCreated: () => void;
   createdBy: string;
+  vagasDisponiveis: number;
 }
 
-export function NewBookingDialog({ slotId, open, onClose, onCreated, createdBy }: Props) {
+// Máscara de telefone: (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
+const maskPhone = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 10) {
+    return digits
+      .replace(/^(\d{2})(\d)/, '($1) $2')
+      .replace(/(\d{4})(\d)/, '$1-$2');
+  }
+  return digits
+    .replace(/^(\d{2})(\d)/, '($1) $2')
+    .replace(/(\d{5})(\d)/, '$1-$2');
+};
+
+export function NewBookingDialog({ slotId, open, onClose, onCreated, createdBy, vagasDisponiveis }: Props) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [numPilots, setNumPilots] = useState(1);
@@ -41,18 +55,36 @@ export function NewBookingDialog({ slotId, open, onClose, onCreated, createdBy }
     setNotes('');
   };
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPhone(maskPhone(e.target.value));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !phone.trim()) {
-      toast.error('Preencha nome e telefone');
+
+    if (!name.trim()) {
+      toast.error('Preencha o nome do cliente');
       return;
     }
+
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+      toast.error('Telefone inválido. Use o formato (XX) XXXXX-XXXX');
+      return;
+    }
+
+    // Validação de capacidade
+    if (numPilots > vagasDisponiveis) {
+      toast.error(`Vagas insuficientes. Disponível: ${vagasDisponiveis} vaga${vagasDisponiveis !== 1 ? 's' : ''}`);
+      return;
+    }
+
     setSubmitting(true);
 
     const { error } = await supabase.from('manual_bookings').insert({
       time_slot_id: slotId,
       customer_name: name.trim(),
-      customer_phone: phone.trim(),
+      customer_phone: phoneDigits,
       num_pilots: numPilots,
       battery_type: battery,
       notes: notes.trim() || null,
@@ -71,6 +103,9 @@ export function NewBookingDialog({ slotId, open, onClose, onCreated, createdBy }
     onCreated();
   };
 
+  // Gera opções de pilotos limitadas pelas vagas disponíveis
+  const maxPilots = Math.min(12, vagasDisponiveis);
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
@@ -78,34 +113,61 @@ export function NewBookingDialog({ slotId, open, onClose, onCreated, createdBy }
           <DialogTitle>Novo agendamento manual</DialogTitle>
           <DialogDescription>
             Cadastre um cliente que reservou presencialmente ou por telefone.
+            {vagasDisponiveis < 12 && (
+              <span className="block mt-1 text-yellow-500 font-medium">
+                Atenção: {vagasDisponiveis} vaga{vagasDisponiveis !== 1 ? 's' : ''} disponível{vagasDisponiveis !== 1 ? 'eis' : ''} neste horário.
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Nome do cliente</Label>
-            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Nome completo"
+              required
+            />
           </div>
+
           <div className="space-y-2">
             <Label htmlFor="phone">Telefone</Label>
-            <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+            <Input
+              id="phone"
+              value={phone}
+              onChange={handlePhoneChange}
+              placeholder="(62) 99999-9999"
+              maxLength={15}
+              required
+            />
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="pilots">Pilotos</Label>
-              <Select value={numPilots.toString()} onValueChange={(v) => setNumPilots(parseInt(v))}>
+              <Select
+                value={numPilots.toString()}
+                onValueChange={(v) => setNumPilots(parseInt(v))}
+              >
                 <SelectTrigger id="pilots">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-                    <SelectItem key={n} value={n.toString()}>
-                      {n}
-                    </SelectItem>
-                  ))}
+                  {maxPilots > 0
+                    ? Array.from({ length: maxPilots }, (_, i) => i + 1).map((n) => (
+                        <SelectItem key={n} value={n.toString()}>
+                          {n}
+                        </SelectItem>
+                      ))
+                    : <SelectItem value="0" disabled>Sem vagas</SelectItem>
+                  }
                 </SelectContent>
               </Select>
             </div>
+
             <div className="space-y-2">
               <Label>Bateria</Label>
               <RadioGroup
@@ -122,18 +184,29 @@ export function NewBookingDialog({ slotId, open, onClose, onCreated, createdBy }
               </RadioGroup>
             </div>
           </div>
+
           <div className="space-y-2">
             <Label htmlFor="notes">Observações (opcional)</Label>
-            <Textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+            <Textarea
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Ex: aniversário, confraternização..."
+            />
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
               Cancelar
             </Button>
-            <Button type="submit" variant="racing" disabled={submitting}>
+            <Button
+              type="submit"
+              variant="racing"
+              disabled={submitting || vagasDisponiveis === 0}
+            >
               {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              Confirmar
+              {vagasDisponiveis === 0 ? 'Sem vagas' : 'Confirmar'}
             </Button>
           </DialogFooter>
         </form>
