@@ -39,16 +39,16 @@ serve(async (req) => {
     logStep("Verifying session", { session_id, reservation_id });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-
     const session = await stripe.checkout.sessions.retrieve(session_id);
-    logStep("Session retrieved", { payment_status: session.payment_status, status: session.status });
+    logStep("Session retrieved", { payment_status: session.payment_status });
 
     if (session.payment_status === "paid") {
       const paymentIntentId = session.payment_intent as string;
 
+      // Busca reserva simples
       const { data: existing } = await supabase
         .from('reservations')
-        .select('status')
+        .select('status, time_slot_id')
         .eq('id', reservation_id)
         .single();
 
@@ -75,14 +75,45 @@ serve(async (req) => {
         logStep("Already paid, skipping update", { reservation_id });
       }
 
-      // Busca reserva completa com dados do slot e pista para exibir na tela de confirmação
+      // Busca reserva completa
       const { data: reservation } = await supabase
         .from('reservations')
-        .select('*, time_slots(date, start_time, end_time, tracks(name))')
+        .select('*')
         .eq('id', reservation_id)
         .single();
 
-      return new Response(JSON.stringify({ verified: true, paid: true, reservation }), {
+      // Busca time_slot separadamente
+      const { data: timeSlot } = await supabase
+        .from('time_slots')
+        .select('date, start_time, end_time, track_id')
+        .eq('id', existing.time_slot_id)
+        .single();
+
+      // Busca track separadamente
+      let trackName = '';
+      if (timeSlot?.track_id) {
+        const { data: track } = await supabase
+          .from('tracks')
+          .select('name')
+          .eq('id', timeSlot.track_id)
+          .single();
+        trackName = track?.name ?? '';
+      }
+
+      // Monta objeto completo para o frontend
+      const fullReservation = {
+        ...reservation,
+        time_slots: timeSlot ? {
+          date: timeSlot.date,
+          start_time: timeSlot.start_time,
+          end_time: timeSlot.end_time,
+          tracks: { name: trackName },
+        } : null,
+      };
+
+      logStep("Returning full reservation", { id: reservation_id, date: timeSlot?.date, trackName });
+
+      return new Response(JSON.stringify({ verified: true, paid: true, reservation: fullReservation }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
