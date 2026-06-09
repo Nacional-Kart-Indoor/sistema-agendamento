@@ -62,7 +62,7 @@ export default function AtendenteDashboard() {
   const [reservations, setReservations] = useState<ReservationRow[]>([]);
   const [manualBookings, setManualBookings] = useState<ManualBookingRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [newBookingSlotId, setNewBookingSlotId] = useState<string | null>(null);
+  const [newBookingSlot, setNewBookingSlot] = useState<{ id: string; vagas: number } | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -196,7 +196,7 @@ export default function AtendenteDashboard() {
                       size="sm"
                       variant="racing"
                       disabled={available === 0}
-                      onClick={() => setNewBookingSlotId(slot.id)}
+                      onClick={() => setNewBookingSlot({ id: slot.id, vagas: available })}
                     >
                       <Plus className="w-4 h-4 mr-1" />
                       Agendar
@@ -263,16 +263,17 @@ export default function AtendenteDashboard() {
         </div>
       </main>
 
-      {newBookingSlotId && (
+      {newBookingSlot && (
         <NewBookingDialog
-          slotId={newBookingSlotId}
-          open={!!newBookingSlotId}
-          onClose={() => setNewBookingSlotId(null)}
+          slotId={newBookingSlot.id}
+          open={!!newBookingSlot}
+          onClose={() => setNewBookingSlot(null)}
           onCreated={() => {
-            setNewBookingSlotId(null);
+            setNewBookingSlot(null);
             loadDay(date);
           }}
           createdBy={user.id}
+          vagasDisponiveis={newBookingSlot.vagas}
         />
       )}
 
