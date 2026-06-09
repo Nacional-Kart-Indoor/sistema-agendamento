@@ -30,7 +30,7 @@ export function useBooking() {
       .from('tracks')
       .select('*')
       .eq('is_active', true);
-    
+
     if (error) {
       toast.error('Erro ao carregar pistas');
       return;
@@ -40,115 +40,118 @@ export function useBooking() {
 
   const fetchTimeSlots = useCallback(async (date: Date, trackId?: string) => {
     const dateStr = date.toISOString().split('T')[0];
-    
+
     let query = supabase
       .from('time_slots')
       .select('*, track:tracks(*)')
       .eq('date', dateStr)
       .eq('is_available', true);
-    
+
     if (trackId) {
       query = query.eq('track_id', trackId);
     }
-    
+
     const { data, error } = await query.order('start_time');
-    
+
     if (error) {
       toast.error('Erro ao carregar horários');
       return;
     }
-    
+
     // Filtra slots com capacidade disponível
     const availableSlots = (data || []).filter(
-      slot => slot.ocupados_atualmente < slot.max_capacity
+      (slot) => slot.ocupados_atualmente < slot.max_capacity
     );
-    
+
     setTimeSlots(availableSlots);
   }, []);
 
-  const calculateTotal = useCallback((track: Track | null, numPilots: number, batteryType: BatteryType): number => {
-    if (!track) return 0;
-    const pricePerPilot = batteryType === 'kids' ? track.price_kids : track.price_per_pilot;
-    return pricePerPilot * numPilots;
-  }, []);
+  const calculateTotal = useCallback(
+    (track: Track | null, numPilots: number, batteryType: BatteryType): number => {
+      if (!track) return 0;
+      const pricePerPilot =
+        batteryType === 'kids' ? track.price_kids : track.price_per_pilot;
+      return pricePerPilot * numPilots;
+    },
+    []
+  );
 
   const updateBookingData = useCallback((data: Partial<BookingData>) => {
-    setBookingData(prev => ({ ...prev, ...data }));
+    setBookingData((prev) => ({ ...prev, ...data }));
   }, []);
 
-  const checkCapacity = useCallback((timeSlot: TimeSlot | null, numPilots: number): boolean => {
-    if (!timeSlot) return false;
-    const available = timeSlot.max_capacity - timeSlot.ocupados_atualmente;
-    return numPilots <= available;
-  }, []);
+  const checkCapacity = useCallback(
+    (timeSlot: TimeSlot | null, numPilots: number): boolean => {
+      if (!timeSlot) return false;
+      const available = timeSlot.max_capacity - timeSlot.ocupados_atualmente;
+      return numPilots <= available;
+    },
+    []
+  );
 
   const createReservation = useCallback(async (): Promise<boolean> => {
     setLoading(true);
-    
+
     try {
-      const { date, timeSlot, track, numPilots, batteryType, customerName, customerEmail, customerPhone } = bookingData;
-      
+      const {
+        date,
+        timeSlot,
+        track,
+        numPilots,
+        batteryType,
+        customerName,
+        customerEmail,
+        customerPhone,
+      } = bookingData;
+
       if (!timeSlot || !track || !date) {
         toast.error('Dados da reserva incompletos');
         return false;
       }
 
-      // Verifica capacidade antes de criar
-      const { data: currentSlot } = await supabase
-        .from('time_slots')
-        .select('ocupados_atualmente, max_capacity')
-        .eq('id', timeSlot.id)
-        .single();
+      // Cria a reserva via Edge Function (nunca acessa a tabela diretamente)
+      const { data: reservationData, error: reservationError } =
+        await supabase.functions.invoke('create-reservation', {
+          body: {
+            time_slot_id: timeSlot.id,
+            customer_name: customerName,
+            customer_email: customerEmail,
+            customer_phone: customerPhone,
+            num_pilots: numPilots,
+            battery_type: batteryType,
+          },
+        });
 
-      if (!currentSlot || (currentSlot.ocupados_atualmente + numPilots) > currentSlot.max_capacity) {
-        toast.error('Capacidade excedida. Por favor, escolha outro horário.');
+      if (reservationError || !reservationData?.reservation) {
+        const msg =
+          reservationData?.error || 'Erro ao criar reserva. Tente novamente.';
+        toast.error(msg);
+        console.error('create-reservation error:', reservationError, reservationData);
         return false;
       }
 
-      const valorTotal = calculateTotal(track, numPilots, batteryType);
-
-      // Cria a reserva com status pending
-      const { data: reservationData, error } = await supabase
-        .from('reservations')
-        .insert({
-          time_slot_id: timeSlot.id,
-          customer_name: customerName,
-          customer_email: customerEmail,
-          customer_phone: customerPhone,
-          num_pilots: numPilots,
-          battery_type: batteryType,
-          valor_total: valorTotal,
-          status: 'pending',
-        })
-        .select('*')
-        .single();
-
-      if (error) {
-        toast.error('Erro ao criar reserva');
-        console.error(error);
-        return false;
-      }
-
-      setReservation(reservationData);
+      const createdReservation: Reservation = reservationData.reservation;
+      setReservation(createdReservation);
 
       // Chama create-checkout para obter URL do Stripe
-      const dateStr = format(date, "dd/MM/yyyy", { locale: ptBR });
+      const dateStr = format(date, 'dd/MM/yyyy', { locale: ptBR });
       const timeStr = `${timeSlot.start_time.slice(0, 5)} - ${timeSlot.end_time.slice(0, 5)}`;
 
-      const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke('create-checkout', {
-        body: {
-          reservation_id: reservationData.id,
-          customer_name: customerName,
-          customer_email: customerEmail,
-          customer_phone: customerPhone,
-          track_id: track.id,
-          track_name: track.name,
-          date: dateStr,
-          time_slot: timeStr,
-          num_pilots: numPilots,
-          battery_type: batteryType,
-        },
-      });
+      const { data: checkoutData, error: checkoutError } =
+        await supabase.functions.invoke('create-checkout', {
+          body: {
+            reservation_id: createdReservation.id,
+            customer_name: customerName,
+            customer_email: customerEmail,
+            customer_phone: customerPhone,
+            track_id: track.id,
+            track_name: track.name,
+            date: dateStr,
+            time_slot: timeStr,
+            num_pilots: numPilots,
+            battery_type: batteryType,
+          },
+        });
 
       if (checkoutError || !checkoutData?.url) {
         console.error('Checkout error:', checkoutError);
