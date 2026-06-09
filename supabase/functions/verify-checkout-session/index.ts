@@ -40,14 +40,12 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
-    // Retrieve the checkout session from Stripe
     const session = await stripe.checkout.sessions.retrieve(session_id);
     logStep("Session retrieved", { payment_status: session.payment_status, status: session.status });
 
     if (session.payment_status === "paid") {
       const paymentIntentId = session.payment_intent as string;
 
-      // Check if already processed (idempotency)
       const { data: existing } = await supabase
         .from('reservations')
         .select('status')
@@ -63,7 +61,6 @@ serve(async (req) => {
       }
 
       if (existing.status !== 'paid') {
-        // Update reservation to paid — DB trigger recomputes time_slots.ocupados_atualmente.
         const { error: updateError } = await supabase
           .from('reservations')
           .update({ status: 'paid', payment_id: paymentIntentId })
@@ -73,14 +70,15 @@ serve(async (req) => {
           logStep("Error updating reservation", { error: updateError });
           throw updateError;
         }
-        logStep("Reservation verified and updated to paid", { reservation_id });
+        logStep("Reservation updated to paid", { reservation_id });
       } else {
         logStep("Already paid, skipping update", { reservation_id });
       }
 
+      // Busca reserva completa com dados do slot e pista para exibir na tela de confirmação
       const { data: reservation } = await supabase
         .from('reservations')
-        .select('*')
+        .select('*, time_slots(date, start_time, end_time, tracks(name))')
         .eq('id', reservation_id)
         .single();
 
@@ -90,7 +88,6 @@ serve(async (req) => {
       });
     }
 
-    // Not paid
     logStep("Payment not completed", { payment_status: session.payment_status });
     return new Response(JSON.stringify({ verified: true, paid: false, payment_status: session.payment_status }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
