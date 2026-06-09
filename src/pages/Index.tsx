@@ -42,11 +42,10 @@ const Index = () => {
     const sessionId = searchParams.get('session_id');
 
     if (payment === 'success' && reservationId && sessionId) {
-      // Verify payment with backend before showing confirmation
       const verifyPayment = async () => {
         try {
           toast.info('Verificando pagamento...');
-          
+
           const { data, error } = await supabase.functions.invoke('verify-checkout-session', {
             body: { session_id: sessionId, reservation_id: reservationId },
           });
@@ -58,19 +57,47 @@ const Index = () => {
           }
 
           if (data?.paid && data?.reservation) {
-            setReservationFromPayment(data.reservation);
+            // Busca a reserva com os dados do time_slot e track para exibir na tela
+            const { data: fullReservation } = await supabase
+              .from('reservations')
+              .select(`
+                *,
+                time_slots (
+                  date,
+                  start_time,
+                  end_time,
+                  tracks ( name )
+                )
+              `)
+              .eq('id', reservationId)
+              .single();
+
+            if (fullReservation) {
+              setReservationFromPayment(fullReservation as any);
+            } else {
+              setReservationFromPayment(data.reservation);
+            }
+
             goToStep('confirmation');
             toast.success('Pagamento confirmado com sucesso!');
           } else {
-            // Payment not yet confirmed — show confirmation page with pending status
+            // Pagamento ainda pendente — busca dados básicos
             const { data: resData } = await supabase
               .from('reservations')
-              .select('*')
+              .select(`
+                *,
+                time_slots (
+                  date,
+                  start_time,
+                  end_time,
+                  tracks ( name )
+                )
+              `)
               .eq('id', reservationId)
               .single();
-            
+
             if (resData) {
-              setReservationFromPayment(resData);
+              setReservationFromPayment(resData as any);
               goToStep('confirmation');
             }
             toast.warning('Pagamento ainda sendo processado. Aguarde alguns instantes.');
@@ -82,7 +109,6 @@ const Index = () => {
       };
 
       verifyPayment();
-      // Clean URL params
       setSearchParams({});
     } else if (payment === 'cancelled') {
       toast.error('Pagamento cancelado. Você pode tentar novamente.');
@@ -92,15 +118,13 @@ const Index = () => {
 
   const handleConfirm = async (): Promise<boolean> => {
     await createReservation();
-    // Don't navigate to confirmation here — the Stripe redirect will bring the user back
-    // with ?payment=success, which is handled by the useEffect above
     return false;
   };
 
   return (
     <div className="min-h-screen bg-background">
       <BookingHeader />
-      
+
       <StepIndicator currentStep={step} />
 
       <main className="container max-w-6xl mx-auto px-4 py-8">
@@ -148,7 +172,6 @@ const Index = () => {
 
         {step === 'confirmation' && (
           <ConfirmationStep
-            bookingData={bookingData}
             reservation={reservation}
             onReset={reset}
           />
