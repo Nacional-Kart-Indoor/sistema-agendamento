@@ -1,19 +1,54 @@
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { BookingData, Reservation } from '@/types/booking';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { CheckCircle, Calendar, Clock, MapPin, Users, Zap, Mail, Phone, Download, Home, Loader2 } from 'lucide-react';
+import { Reservation } from '@/types/booking';
+import { CheckCircle, Calendar, Clock, MapPin, Users, Zap, Mail, Phone, Home, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ConfirmationStepProps {
-  bookingData: BookingData;
   reservation: Reservation | null;
   onReset: () => void;
 }
 
-export function ConfirmationStep({ bookingData, reservation, onReset }: ConfirmationStepProps) {
+export function ConfirmationStep({ reservation, onReset }: ConfirmationStepProps) {
   const isPaid = reservation?.status === 'paid';
+
+  // Formata data de um time_slot (ex: "2026-06-10") para "quarta-feira, 10 de junho de 2026"
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '';
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString('pt-BR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  };
+
+  const formatTime = (start?: string, end?: string) => {
+    if (!start || !end) return '';
+    return `${start.slice(0, 5)} às ${end.slice(0, 5)}`;
+  };
+
+  const formatPhone = (phone?: string) => {
+    if (!phone) return '';
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length === 11) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+    }
+    if (digits.length === 10) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+    return phone;
+  };
+
+  // Dados vêm do objeto reservation (retornado pelo banco via verify-checkout-session)
+  const timeSlot = (reservation as any)?.time_slots;
+  const track = timeSlot?.tracks || (reservation as any)?.track;
+  const dateStr = timeSlot?.date;
+  const startTime = timeSlot?.start_time;
+  const endTime = timeSlot?.end_time;
+  const trackName = track?.name || (reservation as any)?.track_name || '';
 
   return (
     <div className="animate-slide-up max-w-lg mx-auto">
@@ -62,9 +97,7 @@ export function ConfirmationStep({ bookingData, reservation, onReset }: Confirma
             <Calendar className="w-5 h-5 text-primary" />
             <div>
               <p className="text-xs text-muted-foreground">Data</p>
-              <p className="font-medium">
-                {bookingData.date && format(bookingData.date, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
-              </p>
+              <p className="font-medium">{formatDate(dateStr)}</p>
             </div>
           </div>
 
@@ -72,9 +105,7 @@ export function ConfirmationStep({ bookingData, reservation, onReset }: Confirma
             <Clock className="w-5 h-5 text-primary" />
             <div>
               <p className="text-xs text-muted-foreground">Horário</p>
-              <p className="font-medium">
-                {bookingData.timeSlot?.start_time.slice(0, 5)} às {bookingData.timeSlot?.end_time.slice(0, 5)}
-              </p>
+              <p className="font-medium">{formatTime(startTime, endTime)}</p>
             </div>
           </div>
 
@@ -82,7 +113,7 @@ export function ConfirmationStep({ bookingData, reservation, onReset }: Confirma
             <MapPin className="w-5 h-5 text-primary" />
             <div>
               <p className="text-xs text-muted-foreground">Pista</p>
-              <p className="font-medium">{bookingData.track?.name}</p>
+              <p className="font-medium">{trackName}</p>
             </div>
           </div>
 
@@ -91,7 +122,7 @@ export function ConfirmationStep({ bookingData, reservation, onReset }: Confirma
               <Users className="w-5 h-5 text-primary" />
               <div>
                 <p className="text-xs text-muted-foreground">Pilotos</p>
-                <p className="font-medium">{bookingData.numPilots}</p>
+                <p className="font-medium">{reservation?.num_pilots}</p>
               </div>
             </div>
 
@@ -100,7 +131,7 @@ export function ConfirmationStep({ bookingData, reservation, onReset }: Confirma
               <div>
                 <p className="text-xs text-muted-foreground">Bateria</p>
                 <p className="font-medium">
-                  {bookingData.batteryType === 'kids' ? 'Kids' : 'Individual'}
+                  {reservation?.battery_type === 'kids' ? 'Kids' : 'Individual'}
                 </p>
               </div>
             </div>
@@ -111,8 +142,8 @@ export function ConfirmationStep({ bookingData, reservation, onReset }: Confirma
           <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
             <Mail className="w-5 h-5 text-primary" />
             <div>
-              <p className="text-xs text-muted-foreground">E-mail de confirmação enviado para</p>
-              <p className="font-medium">{bookingData.customerEmail}</p>
+              <p className="text-xs text-muted-foreground">E-mail</p>
+              <p className="font-medium">{reservation?.customer_email}</p>
             </div>
           </div>
 
@@ -120,7 +151,7 @@ export function ConfirmationStep({ bookingData, reservation, onReset }: Confirma
             <Phone className="w-5 h-5 text-primary" />
             <div>
               <p className="text-xs text-muted-foreground">Telefone</p>
-              <p className="font-medium">{bookingData.customerPhone}</p>
+              <p className="font-medium">{formatPhone(reservation?.customer_phone)}</p>
             </div>
           </div>
 
@@ -134,10 +165,6 @@ export function ConfirmationStep({ bookingData, reservation, onReset }: Confirma
       </Card>
 
       <div className="flex flex-col gap-3 mt-8">
-        <Button variant="racing" size="lg" className="w-full">
-          <Download className="w-5 h-5 mr-2" />
-          Baixar Comprovante
-        </Button>
         <Button variant="outline" size="lg" onClick={onReset} className="w-full">
           <Home className="w-5 h-5 mr-2" />
           Nova Reserva
@@ -147,7 +174,7 @@ export function ConfirmationStep({ bookingData, reservation, onReset }: Confirma
       <p className="text-xs text-muted-foreground text-center mt-6">
         Chegue com 15 minutos de antecedência para o briefing de segurança.
         <br />
-        Em caso de dúvidas, entre em contato: (11) 9999-9999
+        Em caso de dúvidas, entre em contato: (62) 99287-6718
       </p>
     </div>
   );
