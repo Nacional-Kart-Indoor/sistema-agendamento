@@ -38,33 +38,77 @@ export function useBooking() {
     setTracks(data || []);
   }, []);
 
+  // ─── NOVA FUNÇÃO: busca disponibilidade no SellFlux ──────────────────────────
   const fetchTimeSlots = useCallback(async (date: Date, trackId?: string) => {
     const dateStr = date.toISOString().split('T')[0];
 
-    let query = supabase
-      .from('time_slots')
-      .select('*, track:tracks(*)')
-      .eq('date', dateStr)
-      .eq('is_available', true);
+    // Pista Kids não usa SellFlux — retorna vazio por enquanto
+    // (no futuro será integrada separadamente)
+    const kartodromoTrackId = tracks.find(
+      (t) => t.name.toLowerCase().includes('principal') || 
+             t.name.toLowerCase().includes('adulto') ||
+             (!t.name.toLowerCase().includes('kids') && !t.name.toLowerCase().includes('infantil'))
+    )?.id;
 
-    if (trackId) {
-      query = query.eq('track_id', trackId);
-    }
-
-    const { data, error } = await query.order('start_time');
-
-    if (error) {
-      toast.error('Erro ao carregar horários');
+    if (trackId && trackId !== kartodromoTrackId) {
+      setTimeSlots([]);
       return;
     }
 
-    // Filtra slots com capacidade disponível
-    const availableSlots = (data || []).filter(
-      (slot) => slot.ocupados_atualmente < slot.max_capacity
-    );
+    try {
+      // Chama a Edge Function que consulta o SellFlux
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-    setTimeSlots(availableSlots);
-  }, []);
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/get-sellflux-availability?date=${dateStr}`,
+        {
+          headers: {
+            Authorization: `Bearer ${anonKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Erro ao consultar disponibilidade');
+      }
+
+      const availability = await response.json();
+
+      // Converte o formato do SellFlux para o formato TimeSlot que o DetailsStep espera
+      // Isso garante que o DetailsStep.tsx não precisa de nenhuma alteração
+      const slots: TimeSlot[] = availability.slots
+        .filter((slot: any) => slot.is_available)
+        .map((slot: any, index: number) => {
+          // Calcula horário de fim (30 min depois)
+          const [h, m] = slot.time.split(':').map(Number);
+          const endMinutes = h * 60 + m + 30;
+          const endH = Math.floor(endMinutes / 60).toString().padStart(2, '0');
+          const endM = (endMinutes % 60).toString().padStart(2, '0');
+          const endTime = `${endH}:${endM}:00`;
+
+          return {
+            id: `sellflux-${dateStr}-${slot.time}`, // ID único baseado na data e hora
+            date: dateStr,
+            start_time: `${slot.time}:00`,
+            end_time: endTime,
+            max_capacity: slot.capacity,
+            ocupados_atualmente: slot.occupied,
+            is_available: slot.is_available,
+            track_id: trackId || kartodromoTrackId || '',
+            track: tracks.find((t) => t.id === (trackId || kartodromoTrackId)) || null,
+          } as TimeSlot;
+        });
+
+      setTimeSlots(slots);
+    } catch (error) {
+      console.error('Erro ao buscar disponibilidade SellFlux:', error);
+      toast.error('Erro ao carregar horários disponíveis');
+      setTimeSlots([]);
+    }
+  }, [tracks]);
+  // ─────────────────────────────────────────────────────────────────────────────
 
   const calculateTotal = useCallback(
     (track: Track | null, numPilots: number, batteryType: BatteryType): number => {
