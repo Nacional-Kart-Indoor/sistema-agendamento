@@ -79,7 +79,6 @@ export function useBooking() {
       // Converte o formato do SellFlux para o formato TimeSlot que o DetailsStep espera
       // Isso garante que o DetailsStep.tsx não precisa de nenhuma alteração
       const slots: TimeSlot[] = availability.slots
-        .filter((slot: any) => slot.is_available)
         .map((slot: any, index: number) => {
           // Calcula horário de fim (30 min depois)
           const [h, m] = slot.time.split(':').map(Number);
