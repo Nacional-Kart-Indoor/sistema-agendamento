@@ -12,7 +12,6 @@ interface ConfirmationStepProps {
 export function ConfirmationStep({ reservation, onReset }: ConfirmationStepProps) {
   const isPaid = reservation?.status === 'paid';
 
-  // Formata data de um time_slot (ex: "2026-06-10") para "quarta-feira, 10 de junho de 2026"
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '';
     const [year, month, day] = dateStr.split('-').map(Number);
@@ -42,13 +41,17 @@ export function ConfirmationStep({ reservation, onReset }: ConfirmationStepProps
     return phone;
   };
 
-  // Dados vêm do objeto reservation (retornado pelo banco via verify-checkout-session)
   const timeSlot = (reservation as any)?.time_slots;
   const track = timeSlot?.tracks || (reservation as any)?.track;
   const dateStr = timeSlot?.date;
   const startTime = timeSlot?.start_time;
   const endTime = timeSlot?.end_time;
-  const trackName = track?.name || (reservation as any)?.track_name || '';
+
+  // Usa "Kartódromo Principal" como fallback quando o track não vier do banco
+  const trackName = track?.name || (reservation as any)?.track_name || 'Kartódromo Principal';
+
+  // Usa o reservation_code gerado (NKI-XXXX) se disponível, senão usa o UUID
+  const reservationCode = (reservation as any)?.reservation_code || `#${reservation?.id.slice(0, 8).toUpperCase()}`;
 
   return (
     <div className="animate-slide-up max-w-lg mx-auto">
@@ -88,7 +91,7 @@ export function ConfirmationStep({ reservation, onReset }: ConfirmationStepProps
         <div className="text-center mb-6">
           <p className="text-sm text-muted-foreground">Código da Reserva</p>
           <p className="text-2xl font-racing font-bold text-primary">
-            #{reservation?.id.slice(0, 8).toUpperCase()}
+            {reservationCode}
           </p>
         </div>
 
