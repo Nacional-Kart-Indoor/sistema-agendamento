@@ -143,11 +143,9 @@ export default function Index() {
         <div className="mt-8">
           {step === 'date' && (
             <DateStep
-              selectedDate={bookingData.date}
-              onDateSelect={(date) => {
-                updateBookingData({ date, timeSlot: null });
-                goToStep('details');
-              }}
+              bookingData={bookingData}
+              onUpdate={updateBookingData}
+              onNext={() => goToStep('details')}
             />
           )}
           {step === 'details' && (
