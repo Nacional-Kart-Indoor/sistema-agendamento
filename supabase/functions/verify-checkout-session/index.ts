@@ -42,6 +42,25 @@ serve(async (req) => {
     const session = await stripe.checkout.sessions.retrieve(session_id);
     logStep("Session retrieved", { payment_status: session.payment_status });
 
+    // ─── Proteção crítica ──────────────────────────────────────────────────
+    // O reservation_id enviado pelo cliente PRECISA bater com o
+    // reservation_id gravado no metadata da sessão Stripe no momento em
+    // que ela foi criada (create-checkout). Sem essa checagem, um
+    // pagamento legítimo de UMA reserva poderia ser reutilizado para
+    // marcar QUALQUER OUTRA reserva como paga, bastando trocar o
+    // reservation_id enviado nesta requisição — mesmo sem pagar por ela.
+    const metadataReservationId = session.metadata?.reservation_id;
+    if (metadataReservationId !== reservation_id) {
+      logStep("ERRO: reservation_id não corresponde ao metadata da sessão", {
+        recebido: reservation_id,
+        esperado: metadataReservationId,
+      });
+      return new Response(JSON.stringify({ error: "Reserva não corresponde à sessão de pagamento" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 403,
+      });
+    }
+
     if (session.payment_status === "paid") {
       const paymentIntentId = session.payment_intent as string;
 
