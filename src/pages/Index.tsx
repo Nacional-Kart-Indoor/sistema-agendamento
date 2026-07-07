@@ -153,11 +153,12 @@ export default function Index() {
               bookingData={bookingData}
               tracks={tracks}
               timeSlots={timeSlots}
-              total={total}
               onUpdate={updateBookingData}
-              onBack={() => goToStep('date')}
-              onContinue={() => goToStep('customer')}
+              onFetchTimeSlots={fetchTimeSlots}
+              calculateTotal={calculateTotal}
               checkCapacity={checkCapacity}
+              onBack={() => goToStep('date')}
+              onNext={() => goToStep('customer')}
             />
           )}
           {step === 'customer' && (
@@ -165,16 +166,17 @@ export default function Index() {
               bookingData={bookingData}
               onUpdate={updateBookingData}
               onBack={() => goToStep('details')}
-              onContinue={() => goToStep('payment')}
+              onNext={() => goToStep('payment')}
             />
           )}
           {step === 'payment' && (
             <PaymentStep
               bookingData={bookingData}
-              total={total}
+              onUpdate={updateBookingData}
+              calculateTotal={calculateTotal}
               loading={loading}
               onBack={() => goToStep('customer')}
-              onPay={createReservation}
+              onConfirm={createReservation}
             />
           )}
           {step === 'confirmation' && (
