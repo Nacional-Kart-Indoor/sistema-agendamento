@@ -1,18 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useBooking } from '@/hooks/useBooking';
-import { useSearchParams } from 'react-router-dom';
 import { BookingHeader } from '@/components/booking/BookingHeader';
-import { StepIndicator } from '@/components/booking/StepIndicator';
 import { DateStep } from '@/components/booking/DateStep';
 import { DetailsStep } from '@/components/booking/DetailsStep';
 import { CustomerStep } from '@/components/booking/CustomerStep';
 import { PaymentStep } from '@/components/booking/PaymentStep';
 import { ConfirmationStep } from '@/components/booking/ConfirmationStep';
-import { toast } from 'sonner';
+import { StepIndicator } from '@/components/booking/StepIndicator';
 import { supabase } from '@/integrations/supabase/client';
+import { Reservation } from '@/types/booking';
 
-const Index = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
+export default function Index() {
   const {
     step,
     bookingData,
@@ -31,158 +29,174 @@ const Index = () => {
     setReservationFromPayment,
   } = useBooking();
 
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'success' | 'cancelled' | 'loading'>('idle');
+
+  // Verifica se voltou do Stripe com pagamento
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get('payment');
+    const sessionId = params.get('session_id');
+    const reservationId = params.get('reservation_id');
+
+    if (payment === 'success' && sessionId && reservationId) {
+      setPaymentStatus('loading');
+      verifyPayment(sessionId, reservationId);
+      // Limpa a URL
+      window.history.replaceState({}, '', '/');
+    } else if (payment === 'cancelled') {
+      setPaymentStatus('cancelled');
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
+
+  const verifyPayment = async (sessionId: string, reservationId: string) => {
+    try {
+      // Tenta verificar via Edge Function
+      const { data, error } = await supabase.functions.invoke('verify-checkout-session', {
+        body: { session_id: sessionId, reservation_id: reservationId },
+      });
+
+      if (error || !data?.reservation) {
+        // Fallback: busca direto no banco
+        await fetchReservationDirect(reservationId);
+        return;
+      }
+
+      const res = data.reservation;
+
+      // Corrige nome da pista — se vier Pista Kids mas bateria não é kids, usa Kartódromo Principal
+      if (res?.time_slots?.tracks?.name) {
+        const trackName = res.time_slots.tracks.name.toLowerCase();
+        if ((trackName.includes('kids') || trackName.includes('infantil')) && res.battery_type !== 'kids') {
+          res.time_slots.tracks.name = 'Kartódromo Principal';
+        }
+      }
+
+      setReservationFromPayment(res as Reservation);
+      setPaymentStatus('success');
+      goToStep('confirmation');
+    } catch (err) {
+      console.error('Erro ao verificar pagamento:', err);
+      await fetchReservationDirect(reservationId);
+    }
+  };
+
+  const fetchReservationDirect = async (reservationId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('reservations')
+        .select('*, time_slots(date, start_time, end_time, track_id, tracks(id, name))')
+        .eq('id', reservationId)
+        .single();
+
+      if (error || !data) {
+        setPaymentStatus('cancelled');
+        return;
+      }
+
+      // Corrige nome da pista
+      if (data?.time_slots?.tracks?.name) {
+        const trackName = (data.time_slots.tracks.name as string).toLowerCase();
+        if ((trackName.includes('kids') || trackName.includes('infantil')) && data.battery_type !== 'kids') {
+          (data.time_slots.tracks as any).name = 'Kartódromo Principal';
+        }
+      }
+
+      setReservationFromPayment(data as unknown as Reservation);
+      setPaymentStatus('success');
+      goToStep('confirmation');
+    } catch (err) {
+      console.error('Erro ao buscar reserva:', err);
+      setPaymentStatus('cancelled');
+    }
+  };
+
   useEffect(() => {
     fetchTracks();
   }, [fetchTracks]);
 
-  // Handle Stripe payment return
   useEffect(() => {
-    const payment = searchParams.get('payment');
-    const reservationId = searchParams.get('reservation_id');
-    const sessionId = searchParams.get('session_id');
-
-    if (payment === 'success' && reservationId && sessionId) {
-      const verifyPayment = async () => {
-        try {
-          toast.info('Verificando pagamento...');
-
-          const { data, error } = await supabase.functions.invoke('verify-checkout-session', {
-            body: { session_id: sessionId, reservation_id: reservationId },
-          });
-
-          if (error) {
-            console.error('Verify error:', error);
-            toast.error('Erro ao verificar pagamento. Tente recarregar a página.');
-            return;
-          }
-
-          if (data?.paid && data?.reservation) {
-            // Busca a reserva com os dados do time_slot e track para exibir na tela
-            const { data: fullReservation } = await supabase
-              .from('reservations')
-              .select(`
-                *,
-                time_slots (
-                  date,
-                  start_time,
-                  end_time,
-                  tracks ( name )
-                )
-              `)
-              .eq('id', reservationId)
-              .single();
-
-            if (fullReservation) {
-              setReservationFromPayment(fullReservation as any);
-            } else {
-              setReservationFromPayment(data.reservation);
-            }
-
-            goToStep('confirmation');
-            toast.success('Pagamento confirmado com sucesso!');
-          } else {
-            // Pagamento ainda pendente — busca dados básicos
-            const { data: resData } = await supabase
-              .from('reservations')
-              .select(`
-                *,
-                time_slots (
-                  date,
-                  start_time,
-                  end_time,
-                  tracks ( name )
-                )
-              `)
-              .eq('id', reservationId)
-              .single();
-
-            if (resData) {
-              setReservationFromPayment(resData as any);
-              goToStep('confirmation');
-            }
-            toast.warning('Pagamento ainda sendo processado. Aguarde alguns instantes.');
-          }
-        } catch (err) {
-          console.error('Verify error:', err);
-          toast.error('Erro ao verificar pagamento.');
-        }
-      };
-
-      verifyPayment();
-      setSearchParams({});
-    } else if (payment === 'cancelled') {
-      toast.error('Pagamento cancelado. Você pode tentar novamente.');
-      setSearchParams({});
+    if (bookingData.date && bookingData.track) {
+      fetchTimeSlots(bookingData.date, bookingData.track.id);
     }
-  }, [searchParams, setSearchParams, goToStep, setReservationFromPayment]);
+  }, [bookingData.date, bookingData.track, fetchTimeSlots]);
 
-  const handleConfirm = async (): Promise<boolean> => {
-    await createReservation();
-    return false;
-  };
+  const total = calculateTotal(bookingData.track, bookingData.numPilots, bookingData.batteryType);
+
+  const steps = ['date', 'details', 'customer', 'payment', 'confirmation'];
+  const currentStepIndex = steps.indexOf(step);
+
+  if (paymentStatus === 'loading') {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-muted-foreground">Confirmando seu pagamento...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
       <BookingHeader />
 
-      <StepIndicator currentStep={step} />
-
-      <main className="container max-w-6xl mx-auto px-4 py-8">
-        {step === 'date' && (
-          <DateStep
-            bookingData={bookingData}
-            onUpdate={updateBookingData}
-            onNext={() => goToStep('details')}
-          />
+      <main className="container max-w-4xl mx-auto px-4 py-8">
+        {step !== 'confirmation' && (
+          <StepIndicator currentStep={currentStepIndex} totalSteps={4} />
         )}
 
-        {step === 'details' && (
-          <DetailsStep
-            bookingData={bookingData}
-            tracks={tracks}
-            timeSlots={timeSlots}
-            onUpdate={updateBookingData}
-            onFetchTimeSlots={fetchTimeSlots}
-            calculateTotal={calculateTotal}
-            checkCapacity={checkCapacity}
-            onNext={() => goToStep('customer')}
-            onBack={() => goToStep('date')}
-          />
-        )}
+        <div className="mt-8">
+          {step === 'date' && (
+            <DateStep
+              selectedDate={bookingData.date}
+              onDateSelect={(date) => {
+                updateBookingData({ date, timeSlot: null });
+                goToStep('details');
+              }}
+            />
+          )}
 
-        {step === 'customer' && (
-          <CustomerStep
-            bookingData={bookingData}
-            onUpdate={updateBookingData}
-            onNext={() => goToStep('payment')}
-            onBack={() => goToStep('details')}
-          />
-        )}
+          {step === 'details' && (
+            <DetailsStep
+              bookingData={bookingData}
+              tracks={tracks}
+              timeSlots={timeSlots}
+              total={total}
+              onUpdate={updateBookingData}
+              onBack={() => goToStep('date')}
+              onContinue={() => goToStep('customer')}
+              checkCapacity={checkCapacity}
+            />
+          )}
 
-        {step === 'payment' && (
-          <PaymentStep
-            bookingData={bookingData}
-            onUpdate={updateBookingData}
-            calculateTotal={calculateTotal}
-            onConfirm={handleConfirm}
-            onBack={() => goToStep('customer')}
-            loading={loading}
-          />
-        )}
+          {step === 'customer' && (
+            <CustomerStep
+              bookingData={bookingData}
+              onUpdate={updateBookingData}
+              onBack={() => goToStep('details')}
+              onContinue={() => goToStep('payment')}
+            />
+          )}
 
-        {step === 'confirmation' && (
-          <ConfirmationStep
-            reservation={reservation}
-            onReset={reset}
-          />
-        )}
+          {step === 'payment' && (
+            <PaymentStep
+              bookingData={bookingData}
+              total={total}
+              loading={loading}
+              onBack={() => goToStep('customer')}
+              onPay={createReservation}
+            />
+          )}
+
+          {step === 'confirmation' && (
+            <ConfirmationStep
+              reservation={reservation}
+              onReset={reset}
+            />
+          )}
+        </div>
       </main>
-
-      <footer className="py-6 text-center text-sm text-muted-foreground border-t border-border">
-        <p>© 2024 Nacional Kart. Todos os direitos reservados.</p>
-      </footer>
     </div>
   );
-};
-
-export default Index;
+}
