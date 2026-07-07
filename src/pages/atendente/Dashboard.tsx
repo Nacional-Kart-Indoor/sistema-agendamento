@@ -64,10 +64,10 @@ interface ReservationSearchResult {
   battery_type: string;
   status: string;
   reservation_code: string | null;
-  total_amount: number;
+  valor_total: number;
   time_slots: {
-    slot_date: string;
-    slot_time: string;
+    date: string;
+    start_time: string;
   } | null;
 }
 
@@ -97,7 +97,7 @@ export default function AtendenteDashboard() {
     try {
       const { data, error } = await supabase
         .from('reservations')
-        .select('id, customer_name, customer_phone, customer_email, num_pilots, battery_type, status, reservation_code, total_amount, time_slots(slot_date, slot_time)')
+        .select('id, customer_name, customer_phone, customer_email, num_pilots, battery_type, status, reservation_code, valor_total, time_slots(date, start_time)')
         .or(`reservation_code.ilike.%${q}%,customer_phone.ilike.%${q}%,customer_name.ilike.%${q}%`)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -232,8 +232,8 @@ export default function AtendenteDashboard() {
           {searchResult && (() => {
             const statusInfo = getStatusInfo(searchResult.status);
             const slot = searchResult.time_slots;
-            const totalFormatted = searchResult.total_amount
-              ? `R$ ${(searchResult.total_amount / 100).toFixed(2).replace('.', ',')}`
+            const totalFormatted = searchResult.valor_total
+              ? `R$ ${Number(searchResult.valor_total).toFixed(2).replace('.', ',')}`
               : '-';
             return (
               <div className="mt-3 rounded-lg border border-border p-4 space-y-3">
@@ -256,12 +256,12 @@ export default function AtendenteDashboard() {
                       <div>
                         <p className="text-muted-foreground text-xs">Data</p>
                         <p className="font-medium">
-                          {format(new Date(`${slot.slot_date}T12:00:00`), 'dd/MM/yyyy', { locale: ptBR })}
+                          {format(new Date(`${slot.date}T12:00:00`), 'dd/MM/yyyy', { locale: ptBR })}
                         </p>
                       </div>
                       <div>
                         <p className="text-muted-foreground text-xs">Horario</p>
-                        <p className="font-medium">{slot.slot_time?.slice(0, 5)}</p>
+                        <p className="font-medium">{slot.start_time?.slice(0, 5)}</p>
                       </div>
                     </>
                   )}
