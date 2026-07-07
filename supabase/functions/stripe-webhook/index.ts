@@ -249,16 +249,12 @@ serve(async (req) => {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
       logStep("Webhook signature verified");
     } catch (err) {
-      logStep("Webhook signature verification failed - processing anyway", { error: err });
-      try {
-        event = JSON.parse(body) as Stripe.Event;
-      } catch (parseErr) {
-        logStep("Failed to parse body", { parseErr });
-        return new Response(JSON.stringify({ error: 'Invalid body' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      logStep("ERROR: Webhook signature verification failed", { error: errorMessage });
+      return new Response(JSON.stringify({ error: 'Invalid signature' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     logStep("Event type", { type: event.type });
