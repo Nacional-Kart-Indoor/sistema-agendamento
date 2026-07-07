@@ -10,6 +10,22 @@ import { StepIndicator } from '@/components/booking/StepIndicator';
 import { supabase } from '@/integrations/supabase/client';
 import { Reservation } from '@/types/booking';
 
+// Corrige nome da pista com segurança total
+function fixTrackName(res: any): any {
+  if (!res) return res;
+  try {
+    if (res?.time_slots?.tracks?.name) {
+      const name = String(res.time_slots.tracks.name).toLowerCase();
+      if ((name.includes('kids') || name.includes('infantil')) && res.battery_type !== 'kids') {
+        res.time_slots.tracks.name = 'Kartódromo Principal';
+      }
+    }
+  } catch (e) {
+    // silently ignore
+  }
+  return res;
+}
+
 export default function Index() {
   const {
     step,
@@ -31,7 +47,6 @@ export default function Index() {
 
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'success' | 'cancelled' | 'loading'>('idle');
 
-  // Verifica se voltou do Stripe com pagamento
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payment = params.get('payment');
@@ -40,9 +55,8 @@ export default function Index() {
 
     if (payment === 'success' && sessionId && reservationId) {
       setPaymentStatus('loading');
-      verifyPayment(sessionId, reservationId);
-      // Limpa a URL
       window.history.replaceState({}, '', '/');
+      verifyPayment(sessionId, reservationId);
     } else if (payment === 'cancelled') {
       setPaymentStatus('cancelled');
       window.history.replaceState({}, '', '/');
@@ -51,30 +65,20 @@ export default function Index() {
 
   const verifyPayment = async (sessionId: string, reservationId: string) => {
     try {
-      // Tenta verificar via Edge Function
       const { data, error } = await supabase.functions.invoke('verify-checkout-session', {
         body: { session_id: sessionId, reservation_id: reservationId },
       });
 
-      if (error || !data?.reservation) {
-        // Fallback: busca direto no banco
-        await fetchReservationDirect(reservationId);
+      if (!error && data?.reservation) {
+        const res = fixTrackName(data.reservation);
+        setReservationFromPayment(res as Reservation);
+        setPaymentStatus('success');
+        goToStep('confirmation');
         return;
       }
 
-      const res = data.reservation;
-
-      // Corrige nome da pista — se vier Pista Kids mas bateria não é kids, usa Kartódromo Principal
-      if (res?.time_slots?.tracks?.name) {
-        const trackName = res.time_slots.tracks.name.toLowerCase();
-        if ((trackName.includes('kids') || trackName.includes('infantil')) && res.battery_type !== 'kids') {
-          res.time_slots.tracks.name = 'Kartódromo Principal';
-        }
-      }
-
-      setReservationFromPayment(res as Reservation);
-      setPaymentStatus('success');
-      goToStep('confirmation');
+      // Fallback direto no banco
+      await fetchReservationDirect(reservationId);
     } catch (err) {
       console.error('Erro ao verificar pagamento:', err);
       await fetchReservationDirect(reservationId);
@@ -94,15 +98,8 @@ export default function Index() {
         return;
       }
 
-      // Corrige nome da pista
-      if (data?.time_slots?.tracks?.name) {
-        const trackName = (data.time_slots.tracks.name as string).toLowerCase();
-        if ((trackName.includes('kids') || trackName.includes('infantil')) && data.battery_type !== 'kids') {
-          (data.time_slots.tracks as any).name = 'Kartódromo Principal';
-        }
-      }
-
-      setReservationFromPayment(data as unknown as Reservation);
+      const res = fixTrackName(data);
+      setReservationFromPayment(res as unknown as Reservation);
       setPaymentStatus('success');
       goToStep('confirmation');
     } catch (err) {
@@ -122,7 +119,6 @@ export default function Index() {
   }, [bookingData.date, bookingData.track, fetchTimeSlots]);
 
   const total = calculateTotal(bookingData.track, bookingData.numPilots, bookingData.batteryType);
-
   const steps = ['date', 'details', 'customer', 'payment', 'confirmation'];
   const currentStepIndex = steps.indexOf(step);
 
@@ -140,12 +136,10 @@ export default function Index() {
   return (
     <div className="min-h-screen bg-background">
       <BookingHeader />
-
       <main className="container max-w-4xl mx-auto px-4 py-8">
         {step !== 'confirmation' && (
           <StepIndicator currentStep={currentStepIndex} totalSteps={4} />
         )}
-
         <div className="mt-8">
           {step === 'date' && (
             <DateStep
@@ -156,7 +150,6 @@ export default function Index() {
               }}
             />
           )}
-
           {step === 'details' && (
             <DetailsStep
               bookingData={bookingData}
@@ -169,7 +162,6 @@ export default function Index() {
               checkCapacity={checkCapacity}
             />
           )}
-
           {step === 'customer' && (
             <CustomerStep
               bookingData={bookingData}
@@ -178,7 +170,6 @@ export default function Index() {
               onContinue={() => goToStep('payment')}
             />
           )}
-
           {step === 'payment' && (
             <PaymentStep
               bookingData={bookingData}
@@ -188,7 +179,6 @@ export default function Index() {
               onPay={createReservation}
             />
           )}
-
           {step === 'confirmation' && (
             <ConfirmationStep
               reservation={reservation}
