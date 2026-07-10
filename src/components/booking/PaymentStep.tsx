@@ -50,7 +50,7 @@ export function PaymentStep({
           <div className="flex justify-between">
             <span className="text-muted-foreground">Horário</span>
             <span className="font-medium">
-              {bookingData.timeSlot?.start_time.slice(0, 5)} - {bookingData.timeSlot?.end_time.slice(0, 5)}
+              {bookingData.timeSlot?.start_time.slice(0, 5)}
             </span>
           </div>
           <div className="flex justify-between">
