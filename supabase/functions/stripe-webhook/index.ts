@@ -246,7 +246,9 @@ serve(async (req) => {
     }
 
     try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      // IMPORTANTE: Deno/Edge Runtime não suporta a API síncrona do SubtleCrypto.
+      // Usar sempre constructEventAsync aqui, nunca constructEvent.
+      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
       logStep("Webhook signature verified");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
