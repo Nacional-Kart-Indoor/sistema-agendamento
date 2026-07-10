@@ -5,7 +5,10 @@ const SELLFLUX_ACTING_USER_ID = Deno.env.get("SELLFLUX_ACTING_USER_ID")!;
 const SELLFLUX_BASE = "https://apis.sellflux.app/api/v1";
 
 const TRACK_CAPACITY = 12;
-const OPERATING_HOURS = generateTimeSlots("10:00", "22:00", 30);
+
+// Segunda a sexta: 14h às 22h. Sábado e domingo: 10h às 22h.
+const WEEKDAY_HOURS = generateTimeSlots("14:00", "22:00", 30);
+const WEEKEND_HOURS = generateTimeSlots("10:00", "22:00", 30);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,6 +28,15 @@ function generateTimeSlots(start: string, end: string, intervalMinutes: number):
     currentMinutes += intervalMinutes;
   }
   return slots;
+}
+
+// Retorna os horários de funcionamento corretos para a data informada,
+// com base no dia da semana (0=domingo ... 6=sábado).
+function getOperatingHoursForDate(date: string): string[] {
+  const [y, m, d] = date.split("-").map(Number);
+  const dayOfWeek = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+  return isWeekend ? WEEKEND_HOURS : WEEKDAY_HOURS;
 }
 
 function extractPilots(subject: string, description: string): number {
@@ -124,10 +136,12 @@ serve(async (req) => {
       );
     }
 
+    const operatingHours = getOperatingHoursForDate(date);
+
     const schedules = await fetchSellFluxSchedules(date);
     const occupancy = calculateOccupancyBySlot(schedules);
 
-    const slots = OPERATING_HOURS.map((time) => {
+    const slots = operatingHours.map((time) => {
       const occupied = occupancy[time] || 0;
       const available = Math.max(0, TRACK_CAPACITY - occupied);
       return {
