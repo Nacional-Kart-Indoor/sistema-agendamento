@@ -34,7 +34,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { time_slot_id, customer_name, customer_email, customer_phone, num_pilots, battery_type } = body;
+    const { time_slot_id, customer_name, customer_email, customer_phone, num_pilots, battery_type, tracking } = body;
 
     if (!time_slot_id || !customer_name || !customer_email || !customer_phone || !num_pilots || !battery_type) {
       return new Response(JSON.stringify({ error: "Campos obrigatórios faltando" }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 });
@@ -136,21 +136,47 @@ serve(async (req) => {
       realTimeSlotId = time_slot_id;
     }
 
+    // Dados de rastreamento do Meta (usados no Purchase via Conversions API)
+    const forwardedFor = req.headers.get("x-forwarded-for") || "";
+    const clientIp = forwardedFor.split(",")[0].trim() || null;
+    const userAgent = req.headers.get("user-agent") || null;
+
     // Cria a reserva
-    const { data: reservation, error: insertError } = await supabase
+    const baseReservation = {
+      time_slot_id: realTimeSlotId,
+      customer_name: customer_name.trim(),
+      customer_email: customer_email.trim().toLowerCase(),
+      customer_phone: customer_phone.replace(/\D/g, ""),
+      num_pilots: pilots,
+      battery_type,
+      valor_total,
+      status: "pending",
+    };
+
+    let { data: reservation, error: insertError } = await supabase
       .from("reservations")
       .insert({
-        time_slot_id: realTimeSlotId,
-        customer_name: customer_name.trim(),
-        customer_email: customer_email.trim().toLowerCase(),
-        customer_phone: customer_phone.replace(/\D/g, ""),
-        num_pilots: pilots,
-        battery_type,
-        valor_total,
-        status: "pending",
+        ...baseReservation,
+        fbp: tracking?.fbp ?? null,
+        fbc: tracking?.fbc ?? null,
+        external_id: tracking?.external_id ?? null,
+        event_source_url: tracking?.event_source_url ?? null,
+        client_user_agent: userAgent,
+        client_ip_address: clientIp,
       })
       .select("*")
       .single();
+
+    // Se a migration das colunas de rastreamento ainda não rodou, a reserva não pode
+    // deixar de ser criada: repete o insert sem esses campos e segue o fluxo.
+    if (insertError && /column|schema cache/i.test(insertError.message || "")) {
+      logStep("Colunas de rastreamento ausentes, criando reserva sem elas", { error: insertError.message });
+      ({ data: reservation, error: insertError } = await supabase
+        .from("reservations")
+        .insert(baseReservation)
+        .select("*")
+        .single());
+    }
 
     if (insertError) {
       logStep("Erro ao criar reserva", { error: insertError });

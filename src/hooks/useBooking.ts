@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { BookingData, BookingStep, Track, TimeSlot, BatteryType, Reservation } from '@/types/booking';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { getTrackingPayload } from '@/lib/meta-pixel';
 import { ptBR } from 'date-fns/locale';
 
 const initialBookingData: BookingData = {
@@ -164,6 +165,8 @@ export function useBooking() {
             customer_phone: customerPhone,
             num_pilots: numPilots,
             battery_type: batteryType,
+            // cookies do Meta + external_id: usados no Purchase via Conversions API
+            tracking: getTrackingPayload(),
           },
         });
 
