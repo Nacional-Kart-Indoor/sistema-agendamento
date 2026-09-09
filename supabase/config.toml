@@ -1,4 +1,4 @@
-project_id = "tvbzbggsacrbqvkzqcip"
+project_id = "bgaecghyybpjiunmpyor"
 
 [functions.create-asaas-charge]
 verify_jwt = false
