@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -10,14 +10,39 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.5"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
       manual_bookings: {
         Row: {
           battery_type: Database["public"]["Enums"]["battery_type"]
-          created_at: string
+          created_at: string | null
           created_by: string | null
           customer_name: string
           customer_phone: string
@@ -25,11 +50,11 @@ export type Database = {
           notes: string | null
           num_pilots: number
           time_slot_id: string
-          updated_at: string
+          updated_at: string | null
         }
         Insert: {
           battery_type?: Database["public"]["Enums"]["battery_type"]
-          created_at?: string
+          created_at?: string | null
           created_by?: string | null
           customer_name: string
           customer_phone: string
@@ -37,11 +62,11 @@ export type Database = {
           notes?: string | null
           num_pilots: number
           time_slot_id: string
-          updated_at?: string
+          updated_at?: string | null
         }
         Update: {
           battery_type?: Database["public"]["Enums"]["battery_type"]
-          created_at?: string
+          created_at?: string | null
           created_by?: string | null
           customer_name?: string
           customer_phone?: string
@@ -49,7 +74,7 @@ export type Database = {
           notes?: string | null
           num_pilots?: number
           time_slot_id?: string
-          updated_at?: string
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -61,10 +86,47 @@ export type Database = {
           },
         ]
       }
+      reconciliation_alerts: {
+        Row: {
+          alert_type: string
+          detail: string | null
+          detected_at: string
+          id: string
+          notified_at: string | null
+          reservation_id: string | null
+          resolved_at: string | null
+        }
+        Insert: {
+          alert_type: string
+          detail?: string | null
+          detected_at?: string
+          id?: string
+          notified_at?: string | null
+          reservation_id?: string | null
+          resolved_at?: string | null
+        }
+        Update: {
+          alert_type?: string
+          detail?: string | null
+          detected_at?: string
+          id?: string
+          notified_at?: string | null
+          reservation_id?: string | null
+          resolved_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reconciliation_alerts_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: false
+            referencedRelation: "reservations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reservations: {
         Row: {
           abandonment_notified_at: string | null
-          asaas_customer_id: string | null
           battery_type: Database["public"]["Enums"]["battery_type"]
           checkout_url: string | null
           checkout_url_expires_at: string | null
@@ -84,7 +146,6 @@ export type Database = {
         }
         Insert: {
           abandonment_notified_at?: string | null
-          asaas_customer_id?: string | null
           battery_type?: Database["public"]["Enums"]["battery_type"]
           checkout_url?: string | null
           checkout_url_expires_at?: string | null
@@ -104,7 +165,6 @@ export type Database = {
         }
         Update: {
           abandonment_notified_at?: string | null
-          asaas_customer_id?: string | null
           battery_type?: Database["public"]["Enums"]["battery_type"]
           checkout_url?: string | null
           checkout_url_expires_at?: string | null
@@ -211,22 +271,81 @@ export type Database = {
       }
       user_roles: {
         Row: {
-          created_at: string
           id: string
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Insert: {
-          created_at?: string
           id?: string
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Update: {
-          created_at?: string
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      whatsapp_message_queue: {
+        Row: {
+          created_at: string
+          id: string
+          message_text: string | null
+          message_type: string
+          payload: Json | null
+          priority: number
+          recipient_phone: string | null
+          reservation_id: string | null
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message_text?: string | null
+          message_type: string
+          payload?: Json | null
+          priority: number
+          recipient_phone?: string | null
+          reservation_id?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message_text?: string | null
+          message_type?: string
+          payload?: Json | null
+          priority?: number
+          recipient_phone?: string | null
+          reservation_id?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_message_queue_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: false
+            referencedRelation: "reservations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_send_lock: {
+        Row: {
+          id: boolean
+          last_sent_at: string
+        }
+        Insert: {
+          id?: boolean
+          last_sent_at?: string
+        }
+        Update: {
+          id?: boolean
+          last_sent_at?: string
         }
         Relationships: []
       }
@@ -235,7 +354,46 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      acquire_whatsapp_send_slot: {
+        Args: { min_gap_ms?: number }
+        Returns: undefined
+      }
+      claim_whatsapp_batch: {
+        Args: never
+        Returns: {
+          created_at: string
+          id: string
+          message_text: string | null
+          message_type: string
+          payload: Json | null
+          priority: number
+          recipient_phone: string | null
+          reservation_id: string | null
+          sent_at: string | null
+          status: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "whatsapp_message_queue"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       generate_future_time_slots: { Args: never; Returns: undefined }
+      get_slot_availability: {
+        Args: { p_date: string }
+        Returns: {
+          end_time: string
+          is_available: boolean
+          max_capacity: number
+          ocupados: number
+          slot_id: string
+          start_time: string
+          track_id: string
+          track_name: string
+          vagas: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -243,10 +401,10 @@ export type Database = {
         }
         Returns: boolean
       }
-      recalc_slot_occupancy: { Args: { _slot_id: string }; Returns: undefined }
+      recalc_slot_occupancy: { Args: { slot_id: string }; Returns: undefined }
     }
     Enums: {
-      app_role: "admin" | "atendente"
+      app_role: "atendente" | "admin"
       battery_type: "individual" | "kids"
       reservation_status: "pending" | "paid" | "cancelled" | "expired"
     }
@@ -264,12 +422,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -293,11 +451,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -318,11 +476,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -343,11 +501,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -360,11 +518,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -374,9 +532,12 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
-      app_role: ["admin", "atendente"],
+      app_role: ["atendente", "admin"],
       battery_type: ["individual", "kids"],
       reservation_status: ["pending", "paid", "cancelled", "expired"],
     },
