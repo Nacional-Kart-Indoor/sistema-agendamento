@@ -13,9 +13,9 @@ const SELLFLUX_ACTING_USER_ID = Deno.env.get("SELLFLUX_ACTING_USER_ID") || "7123
 const SELLFLUX_BASE = "https://apis.sellflux.app/api/v1";
 
 // ─── Configurações Evolution API (WhatsApp) ───────────────────────────────────
-const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL");       // ex: https://evo.seudominio.com
-const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY");       // chave da Evolution API
-const EVOLUTION_INSTANCE = Deno.env.get("EVOLUTION_INSTANCE");     // nome da instância
+const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL");
+const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY");
+const EVOLUTION_INSTANCE = Deno.env.get("EVOLUTION_INSTANCE");
 
 // ─── Logger ───────────────────────────────────────────────────────────────────
 const logStep = (step: string, details?: any) => {
@@ -25,7 +25,7 @@ const logStep = (step: string, details?: any) => {
 
 // ─── Gera código de reserva único ─────────────────────────────────────────────
 function generateReservationCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem I, O, 0, 1 para evitar confusão
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = 'NKI-';
   for (let i = 0; i < 4; i++) {
     code += chars[Math.floor(Math.random() * chars.length)];
@@ -33,15 +33,12 @@ function generateReservationCode(): string {
   return code;
 }
 
-// ─── Formata data para exibição ───────────────────────────────────────────────
 function formatDate(dateStr: string): string {
-  // dateStr = "2026-07-10"
   const [year, month, day] = dateStr.split('-');
   return `${day}/${month}/${year}`;
 }
 
 function formatTime(timeStr: string): string {
-  // timeStr = "14:00:00" ou "14:00"
   return timeStr.substring(0, 5);
 }
 
@@ -85,11 +82,10 @@ async function createSellFluxSchedule(
   reservationCode: string
 ) {
   try {
-    const slotDate = slot.date; // "2026-07-10"
-    const slotTime = slot.start_time; // "14:00:00"
-    const slotTimeShort = formatTime(slotTime); // "14:00"
+    const slotDate = slot.date;
+    const slotTime = slot.start_time;
+    const slotTimeShort = formatTime(slotTime);
 
-    // Horário de início e fim em ISO 8601 com timezone Brasília
     const startISO = `${slotDate}T${slotTimeShort}:00-03:00`;
     const [h, m] = slotTimeShort.split(":").map(Number);
     const endMinutes = h * 60 + m + 30;
@@ -149,39 +145,33 @@ async function createSellFluxSchedule(
   }
 }
 
-// ─── Evolution API: Envia WhatsApp ────────────────────────────────────────────
-async function sendWhatsApp(reservation: any, slot: any, reservationCode: string) {
-  // Se Evolution API não estiver configurada, apenas loga e segue
+// ─── Evolution API: envia mensagem direta ao CLIENTE (prioridade 1) ──────────
+// Passa pelo filtro de espaçamento (mínimo 2s entre qualquer envio do sistema)
+// antes de chamar a Evolution API de verdade.
+async function sendWhatsAppToClient(phone: string, message: string, supabase: any) {
   if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE) {
     logStep("Evolution API não configurada — WhatsApp não enviado");
     return;
   }
+  if (!phone) {
+    logStep("Número de telefone vazio — envio ignorado");
+    return;
+  }
+
+  // Filtro de espaçamento — sempre antes de qualquer chamada real à Evolution API.
+  try {
+    const { error } = await supabase.rpc('acquire_whatsapp_send_slot');
+    if (error) {
+      logStep("Filtro de espaçamento falhou, seguindo sem ele", { error: error.message });
+    }
+  } catch (err) {
+    logStep("Exceção no filtro de espaçamento, seguindo sem ele", { err });
+  }
+
+  const phoneClean = phone.replace(/\D/g, '');
+  const phoneWithDDI = phoneClean.startsWith('55') ? phoneClean : `55${phoneClean}`;
 
   try {
-    const slotDate = slot.date;
-    const slotTime = formatTime(slot.start_time);
-    const numPilots = reservation.num_pilots;
-    const totalFormatted = `R$ ${(reservation.valor_total || 0).toFixed(2).replace('.', ',')}`;
-
-    // Formata telefone: remove tudo que não é número e garante DDI 55
-    const phoneClean = reservation.customer_phone.replace(/\D/g, '');
-    const phoneWithDDI = phoneClean.startsWith('55') ? phoneClean : `55${phoneClean}`;
-
-    const message = [
-      `✅ *Reserva confirmada! Nacional Kart Indoor*`,
-      ``,
-      `📅 *Data:* ${formatDate(slotDate)}`,
-      `⏰ *Horário:* ${slotTime}`,
-      `👥 *Pilotos:* ${numPilots}`,
-      `🏁 *Pista:* Kartódromo Principal`,
-      `💰 *Valor pago:* ${totalFormatted}`,
-      ``,
-      `🎫 *Código de reserva: ${reservationCode}*`,
-      ``,
-      `Apresente este código na recepção ao chegar.`,
-      `Até logo! 🏎️`,
-    ].join('\n');
-
     const response = await fetch(
       `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`,
       {
@@ -199,12 +189,64 @@ async function sendWhatsApp(reservation: any, slot: any, reservationCode: string
 
     if (!response.ok) {
       const error = await response.text();
-      logStep("Erro ao enviar WhatsApp", { error });
+      logStep("Erro ao enviar WhatsApp ao cliente", { error });
     } else {
-      logStep("WhatsApp enviado com sucesso", { phone: phoneWithDDI });
+      logStep("WhatsApp enviado ao cliente com sucesso", { phone: phoneWithDDI });
     }
   } catch (err) {
-    logStep("Exceção ao enviar WhatsApp", { err });
+    logStep("Exceção ao enviar WhatsApp ao cliente", { err });
+  }
+}
+
+// ─── Monta a confirmação, envia ao cliente na hora, enfileira a recepção ─────
+async function sendWhatsApp(reservation: any, slot: any, reservationCode: string, supabase: any) {
+  const slotDate = slot.date;
+  const slotTime = formatTime(slot.start_time);
+  const numPilots = reservation.num_pilots;
+  const totalFormatted = `R$ ${(reservation.valor_total || 0).toFixed(2).replace('.', ',')}`;
+
+  const message = [
+    `✅ *Reserva confirmada! Nacional Kart Indoor*`,
+    ``,
+    `📅 *Data:* ${formatDate(slotDate)}`,
+    `⏰ *Horário:* ${slotTime}`,
+    `👥 *Pilotos:* ${numPilots}`,
+    `🏁 *Pista:* Kartódromo Principal`,
+    `💰 *Valor pago:* ${totalFormatted}`,
+    ``,
+    `🎫 *Código de reserva: ${reservationCode}*`,
+    ``,
+    `Apresente este código na recepção ao chegar.`,
+    `Até logo! 🏎️`,
+  ].join('\n');
+
+  // 1) Cliente — prioridade 1, envio direto e imediato (só passa pelo filtro de 2s)
+  await sendWhatsAppToClient(reservation.customer_phone, message, supabase);
+
+  // 2) Recepção — prioridade 3, cai na fila unificada em vez de enviar direto.
+  // O whatsapp-queue-processor vai pegar isso e, se houver mais de uma reserva
+  // pendente de notificar a recepção, agrupa tudo numa mensagem só.
+  const { error: enqueueError } = await supabase
+    .from('whatsapp_message_queue')
+    .insert({
+      priority: 3,
+      message_type: 'reception_confirmation',
+      reservation_id: reservation.id,
+      payload: {
+        customer_name: reservation.customer_name,
+        customer_phone: reservation.customer_phone,
+        date: slotDate,
+        time: slot.start_time,
+        num_pilots: numPilots,
+        valor_total: reservation.valor_total,
+        reservation_code: reservationCode,
+      },
+    });
+
+  if (enqueueError) {
+    logStep("Erro ao enfileirar notificação para recepção", { error: enqueueError.message });
+  } else {
+    logStep("Notificação de recepção enfileirada", { reservationId: reservation.id });
   }
 }
 
@@ -246,8 +288,6 @@ serve(async (req) => {
     }
 
     try {
-      // IMPORTANTE: Deno/Edge Runtime não suporta a API síncrona do SubtleCrypto.
-      // Usar sempre constructEventAsync aqui, nunca constructEvent.
       event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
       logStep("Webhook signature verified");
     } catch (err) {
@@ -274,7 +314,6 @@ serve(async (req) => {
       logStep("Payment completed", { reservationId, paymentIntentId });
 
       if (reservationId) {
-        // Idempotência: verifica se já foi processado
         const { data: reservation, error: fetchError } = await supabase
           .from('reservations')
           .select('id, status, reservation_code')
@@ -289,10 +328,8 @@ serve(async (req) => {
         if (reservation.status === 'paid') {
           logStep("Reservation already paid, skipping", { reservationId });
         } else {
-          // Gera código de reserva único
           const reservationCode = generateReservationCode();
 
-          // Atualiza reserva para paid + salva o código
           const { error: updateError } = await supabase
             .from('reservations')
             .update({
@@ -309,7 +346,6 @@ serve(async (req) => {
 
           logStep("Reservation updated to paid", { reservationId, reservationCode });
 
-          // Busca dados completos da reserva + slot para SellFlux e WhatsApp
           const { data: fullReservation, error: fullFetchError } = await supabase
             .from('reservations')
             .select(`
@@ -333,14 +369,9 @@ serve(async (req) => {
           } else {
             const slot = fullReservation.time_slots;
 
-            // 1. Cria lead no SellFlux
             const leadId = await createSellFluxLead(fullReservation);
-
-            // 2. Cria agendamento no SellFlux
             await createSellFluxSchedule(fullReservation, slot, leadId, reservationCode);
-
-            // 3. Envia WhatsApp com o código de reserva
-            await sendWhatsApp(fullReservation, slot, reservationCode);
+            await sendWhatsApp(fullReservation, slot, reservationCode, supabase);
           }
         }
       }

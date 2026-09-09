@@ -157,6 +157,32 @@ serve(async (req) => {
 
     logStep("Checkout session created", { sessionId: session.id, url: session.url });
 
+    // Salva a URL de checkout e sua validade na reserva, para reaproveitar depois
+    // na mensagem de recuperação de carrinho abandonado (notify-abandoned-cart).
+    // session.expires_at vem em segundos (unix timestamp); o Stripe define isso
+    // automaticamente para 24h à frente por padrão.
+    if (session.url) {
+      const expiresAtISO = session.expires_at
+        ? new Date(session.expires_at * 1000).toISOString()
+        : null;
+
+      const { error: checkoutUrlUpdateError } = await supabase
+        .from('reservations')
+        .update({
+          checkout_url: session.url,
+          checkout_url_expires_at: expiresAtISO,
+        })
+        .eq('id', reservation_id);
+
+      if (checkoutUrlUpdateError) {
+        // Não bloqueia o fluxo — se isso falhar, a mensagem de recuperação
+        // simplesmente cai no fallback (link da home) mais tarde.
+        logStep("Failed to save checkout_url", { error: checkoutUrlUpdateError.message });
+      } else {
+        logStep("checkout_url saved", { reservation_id, expiresAtISO });
+      }
+    }
+
     return new Response(JSON.stringify({ url: session.url, session_id: session.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
