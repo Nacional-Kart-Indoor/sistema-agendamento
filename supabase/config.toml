@@ -1,10 +1,10 @@
 project_id = "tvbzbggsacrbqvkzqcip"
 
-[functions.create-checkout]
+[functions.create-asaas-charge]
 verify_jwt = false
 
-[functions.stripe-webhook]
+[functions.asaas-webhook]
 verify_jwt = false
 
-[functions.verify-checkout-session]
+[functions.verify-asaas-payment]
 verify_jwt = false

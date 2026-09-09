@@ -2,7 +2,7 @@
 //
 // Helper compartilhado para enviar mensagens de WhatsApp via Evolution API.
 // Usado por notify-abandoned-cart, reconciliation-check e whatsapp-queue-processor.
-// (O stripe-webhook tem sua própria função inline pro envio ao CLIENTE, que
+// (O asaas-webhook tem sua própria função inline pro envio ao CLIENTE, que
 // continua instantânea/direta — só o envio à recepção passa pela fila agora.)
 //
 // Requer os secrets no projeto Supabase:

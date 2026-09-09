@@ -1,10 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { isSandbox, mapAsaasEventToReservation } from "../_shared/asaas.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, stripe-signature',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, asaas-access-token",
 };
 
 // ─── Configurações SellFlux ───────────────────────────────────────────────────
@@ -19,14 +19,14 @@ const EVOLUTION_INSTANCE = Deno.env.get("EVOLUTION_INSTANCE");
 
 // ─── Logger ───────────────────────────────────────────────────────────────────
 const logStep = (step: string, details?: any) => {
-  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
-  console.log(`[STRIPE-WEBHOOK] ${step}${detailsStr}`);
+  const detailsStr = details ? ` - ${JSON.stringify(details)}` : "";
+  console.log(`[ASAAS-WEBHOOK] ${step}${detailsStr}`);
 };
 
 // ─── Gera código de reserva único ─────────────────────────────────────────────
 function generateReservationCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = 'NKI-';
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "NKI-";
   for (let i = 0; i < 4; i++) {
     code += chars[Math.floor(Math.random() * chars.length)];
   }
@@ -34,7 +34,7 @@ function generateReservationCode(): string {
 }
 
 function formatDate(dateStr: string): string {
-  const [year, month, day] = dateStr.split('-');
+  const [year, month, day] = dateStr.split("-");
   return `${day}/${month}/${year}`;
 }
 
@@ -79,7 +79,7 @@ async function createSellFluxSchedule(
   reservation: any,
   slot: any,
   leadId: number | null,
-  reservationCode: string
+  reservationCode: string,
 ) {
   try {
     const slotDate = slot.date;
@@ -95,17 +95,17 @@ async function createSellFluxSchedule(
 
     const numPilots = reservation.num_pilots;
     const subject = `${reservation.customer_name} ${numPilots}p (SITE)`;
-    const totalFormatted = `R$ ${(reservation.valor_total || 0).toFixed(2).replace('.', ',')}`;
+    const totalFormatted = `R$ ${(reservation.valor_total || 0).toFixed(2).replace(".", ",")}`;
 
     const description = [
-      `Reserva de bateria de kart para ${numPilots} pessoa${numPilots > 1 ? 's' : ''} na modalidade adulto.`,
+      `Reserva de bateria de kart para ${numPilots} pessoa${numPilots > 1 ? "s" : ""} na modalidade adulto.`,
       `Agendado pelo site.`,
       `Data: ${formatDate(slotDate)} às ${slotTimeShort}`,
       `Valor: ${totalFormatted}`,
       `Tel: ${reservation.customer_phone}`,
       `Email: ${reservation.customer_email}`,
       `Código da reserva: ${reservationCode}`,
-    ].join('\n');
+    ].join("\n");
 
     const body: any = {
       subject,
@@ -146,8 +146,6 @@ async function createSellFluxSchedule(
 }
 
 // ─── Evolution API: envia mensagem direta ao CLIENTE (prioridade 1) ──────────
-// Passa pelo filtro de espaçamento (mínimo 2s entre qualquer envio do sistema)
-// antes de chamar a Evolution API de verdade.
 async function sendWhatsAppToClient(phone: string, message: string, supabase: any) {
   if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE) {
     logStep("Evolution API não configurada — WhatsApp não enviado");
@@ -160,7 +158,7 @@ async function sendWhatsAppToClient(phone: string, message: string, supabase: an
 
   // Filtro de espaçamento — sempre antes de qualquer chamada real à Evolution API.
   try {
-    const { error } = await supabase.rpc('acquire_whatsapp_send_slot');
+    const { error } = await supabase.rpc("acquire_whatsapp_send_slot");
     if (error) {
       logStep("Filtro de espaçamento falhou, seguindo sem ele", { error: error.message });
     }
@@ -168,8 +166,8 @@ async function sendWhatsAppToClient(phone: string, message: string, supabase: an
     logStep("Exceção no filtro de espaçamento, seguindo sem ele", { err });
   }
 
-  const phoneClean = phone.replace(/\D/g, '');
-  const phoneWithDDI = phoneClean.startsWith('55') ? phoneClean : `55${phoneClean}`;
+  const phoneClean = phone.replace(/\D/g, "");
+  const phoneWithDDI = phoneClean.startsWith("55") ? phoneClean : `55${phoneClean}`;
 
   try {
     const response = await fetch(
@@ -178,13 +176,13 @@ async function sendWhatsAppToClient(phone: string, message: string, supabase: an
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "apikey": EVOLUTION_API_KEY,
+          apikey: EVOLUTION_API_KEY,
         },
         body: JSON.stringify({
           number: phoneWithDDI,
           text: message,
         }),
-      }
+      },
     );
 
     if (!response.ok) {
@@ -203,7 +201,7 @@ async function sendWhatsApp(reservation: any, slot: any, reservationCode: string
   const slotDate = slot.date;
   const slotTime = formatTime(slot.start_time);
   const numPilots = reservation.num_pilots;
-  const totalFormatted = `R$ ${(reservation.valor_total || 0).toFixed(2).replace('.', ',')}`;
+  const totalFormatted = `R$ ${(reservation.valor_total || 0).toFixed(2).replace(".", ",")}`;
 
   const message = [
     `✅ *Reserva confirmada! Nacional Kart Indoor*`,
@@ -218,19 +216,17 @@ async function sendWhatsApp(reservation: any, slot: any, reservationCode: string
     ``,
     `Apresente este código na recepção ao chegar.`,
     `Até logo! 🏎️`,
-  ].join('\n');
+  ].join("\n");
 
   // 1) Cliente — prioridade 1, envio direto e imediato (só passa pelo filtro de 2s)
   await sendWhatsAppToClient(reservation.customer_phone, message, supabase);
 
   // 2) Recepção — prioridade 3, cai na fila unificada em vez de enviar direto.
-  // O whatsapp-queue-processor vai pegar isso e, se houver mais de uma reserva
-  // pendente de notificar a recepção, agrupa tudo numa mensagem só.
   const { error: enqueueError } = await supabase
-    .from('whatsapp_message_queue')
+    .from("whatsapp_message_queue")
     .insert({
       priority: 3,
-      message_type: 'reception_confirmation',
+      message_type: "reception_confirmation",
       reservation_id: reservation.id,
       payload: {
         customer_name: reservation.customer_name,
@@ -250,159 +246,194 @@ async function sendWhatsApp(reservation: any, slot: any, reservationCode: string
   }
 }
 
+// ─── Efeitos pós-pagamento (código de reserva + SellFlux + WhatsApp) ─────────
+async function runPostPaymentEffects(
+  supabase: any,
+  reservationId: string,
+  reservationCode: string,
+) {
+  const { data: fullReservation, error: fullFetchError } = await supabase
+    .from("reservations")
+    .select(`
+      id,
+      customer_name,
+      customer_email,
+      customer_phone,
+      num_pilots,
+      valor_total,
+      reservation_code,
+      time_slots (
+        date,
+        start_time
+      )
+    `)
+    .eq("id", reservationId)
+    .single();
+
+  if (fullFetchError || !fullReservation) {
+    logStep("Erro ao buscar reserva completa", { fullFetchError });
+    return;
+  }
+
+  const slot = fullReservation.time_slots as any;
+  if (!slot?.date || !slot?.start_time) {
+    // Reserva sem slot vinculado (modo SellFlux sem match no Supabase). A reserva
+    // já está paga; só não dá pra montar o agendamento/mensagem com data e hora.
+    logStep("Reserva sem time_slot — SellFlux/WhatsApp pulados", { reservationId });
+    return;
+  }
+
+  if (isSandbox()) {
+    logStep("SANDBOX_MODE — SellFlux e WhatsApp pulados", { reservationId, reservationCode });
+    return;
+  }
+
+  const leadId = await createSellFluxLead(fullReservation);
+  await createSellFluxSchedule(fullReservation, slot, leadId, reservationCode);
+  await sendWhatsApp(fullReservation, slot, reservationCode, supabase);
+}
+
 // ─── Handler principal ────────────────────────────────────────────────────────
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     logStep("Webhook received");
 
-    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
-    const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
-
-    if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
-
-    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-
-    const body = await req.text();
-    const signature = req.headers.get('stripe-signature');
-
-    let event: Stripe.Event;
-
-    if (!webhookSecret) {
-      logStep("ERROR: STRIPE_WEBHOOK_SECRET is not configured");
-      return new Response(JSON.stringify({ error: 'Webhook secret not configured' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    // ── Autenticação: token simples no header (a Asaas não assina com HMAC) ──
+    const expectedToken = Deno.env.get("ASAAS_WEBHOOK_TOKEN");
+    const receivedToken = req.headers.get("asaas-access-token");
+    if (!expectedToken || receivedToken !== expectedToken) {
+      logStep("ERRO: token de webhook inválido");
+      // Requisição não autêntica — aceitável responder != 2xx aqui.
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (!signature) {
-      logStep("ERROR: Missing stripe-signature header");
-      return new Response(JSON.stringify({ error: 'Missing signature' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    const payload = await req.json();
+    const event: string = payload?.event;
+    const payment = payload?.payment;
+    const reservationId: string | undefined = payment?.externalReference;
+
+    logStep("Event", { event, paymentId: payment?.id, reservationId, status: payment?.status, billingType: payment?.billingType });
+
+    const targetStatus = mapAsaasEventToReservation(event);
+    if (!targetStatus) {
+      logStep("Evento ignorado", { event });
+      return new Response(JSON.stringify({ received: true, ignored: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    try {
-      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
-      logStep("Webhook signature verified");
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      logStep("ERROR: Webhook signature verification failed", { error: errorMessage });
-      return new Response(JSON.stringify({ error: 'Invalid signature' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    if (!reservationId) {
+      logStep("Webhook sem externalReference — ignorado", { event });
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    logStep("Event type", { type: event.type });
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ── Pagamento confirmado ──────────────────────────────────────────────────
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const reservationId = session.metadata?.reservation_id;
-      const paymentIntentId = session.payment_intent as string;
+    const { data: reservation, error: fetchError } = await supabase
+      .from("reservations")
+      .select("id, status, reservation_code")
+      .eq("id", reservationId)
+      .single();
 
-      logStep("Payment completed", { reservationId, paymentIntentId });
-
-      if (reservationId) {
-        const { data: reservation, error: fetchError } = await supabase
-          .from('reservations')
-          .select('id, status, reservation_code')
-          .eq('id', reservationId)
-          .single();
-
-        if (fetchError) {
-          logStep("Error fetching reservation", { error: fetchError });
-          throw fetchError;
-        }
-
-        if (reservation.status === 'paid') {
-          logStep("Reservation already paid, skipping", { reservationId });
-        } else {
-          const reservationCode = generateReservationCode();
-
-          const { error: updateError } = await supabase
-            .from('reservations')
-            .update({
-              status: 'paid',
-              payment_id: paymentIntentId,
-              reservation_code: reservationCode,
-            })
-            .eq('id', reservationId);
-
-          if (updateError) {
-            logStep("Error updating reservation", { error: updateError });
-            throw updateError;
-          }
-
-          logStep("Reservation updated to paid", { reservationId, reservationCode });
-
-          const { data: fullReservation, error: fullFetchError } = await supabase
-            .from('reservations')
-            .select(`
-              id,
-              customer_name,
-              customer_email,
-              customer_phone,
-              num_pilots,
-              valor_total,
-              reservation_code,
-              time_slots (
-                date,
-                start_time
-              )
-            `)
-            .eq('id', reservationId)
-            .single();
-
-          if (fullFetchError || !fullReservation) {
-            logStep("Erro ao buscar reserva completa", { fullFetchError });
-          } else {
-            const slot = fullReservation.time_slots;
-
-            const leadId = await createSellFluxLead(fullReservation);
-            await createSellFluxSchedule(fullReservation, slot, leadId, reservationCode);
-            await sendWhatsApp(fullReservation, slot, reservationCode, supabase);
-          }
-        }
-      }
+    if (fetchError || !reservation) {
+      // Evento órfão — não retrair a fila da Asaas por causa disso.
+      logStep("Reserva não encontrada — respondendo 200", { reservationId, error: fetchError?.message });
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // ── Sessão expirada ───────────────────────────────────────────────────────
-    if (event.type === 'checkout.session.expired') {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const reservationId = session.metadata?.reservation_id;
-
-      if (reservationId) {
-        await supabase
-          .from('reservations')
-          .update({ status: 'expired' })
-          .eq('id', reservationId);
-
-        logStep("Reservation expired", { reservationId });
+    // ── Pagamento confirmado / recebido ─────────────────────────────────────
+    if (targetStatus === "paid") {
+      if (reservation.status === "paid") {
+        logStep("Reserva já paga, ignorando (idempotente)", { reservationId });
+        return new Response(JSON.stringify({ received: true }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
+
+      const reservationCode = reservation.reservation_code || generateReservationCode();
+
+      const { error: updateError } = await supabase
+        .from("reservations")
+        .update({
+          status: "paid",
+          payment_id: payment.id,
+          // Valor CRU do billingType retornado pela Asaas. Para débito na página
+          // hospedada a doc não confirma a string — ver T3 antes de ramificar.
+          payment_method: payment.billingType || "asaas",
+          reservation_code: reservationCode,
+        })
+        .eq("id", reservationId);
+
+      if (updateError) {
+        logStep("Erro ao atualizar reserva para paid", { error: updateError });
+        throw updateError;
+      }
+
+      logStep("Reserva atualizada para paid", { reservationId, reservationCode });
+
+      await runPostPaymentEffects(supabase, reservationId, reservationCode);
+
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Cobrança vencida ───────────────────────────────────────────────────
+    if (targetStatus === "expired") {
+      if (reservation.status === "pending") {
+        await supabase.from("reservations").update({ status: "expired" }).eq("id", reservationId);
+        logStep("Reserva marcada como expired", { reservationId });
+      } else {
+        logStep("PAYMENT_OVERDUE ignorado (reserva não está pending)", { reservationId, status: reservation.status });
+      }
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Estorno / chargeback / exclusão ────────────────────────────────────
+    if (targetStatus === "cancelled") {
+      if (reservation.status !== "cancelled") {
+        await supabase.from("reservations").update({ status: "cancelled" }).eq("id", reservationId);
+        // Dispara trg_reservations_recalc e libera a vaga.
+        logStep("Reserva marcada como cancelled", { reservationId, event });
+      }
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     return new Response(JSON.stringify({ received: true }), {
       status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     logStep("ERROR", { message: errorMessage });
+    // 500 → a Asaas re-tenta. A fila só pausa após 15 falhas consecutivas.
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
