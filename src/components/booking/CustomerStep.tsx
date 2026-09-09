@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { BookingData } from '@/types/booking';
-import { ArrowLeft, ArrowRight, User, Mail, Phone } from 'lucide-react';
+import { ArrowLeft, ArrowRight, User, Mail, Phone, FileText } from 'lucide-react';
 import { z } from 'zod';
 
 interface CustomerStepProps {
@@ -14,10 +14,68 @@ interface CustomerStepProps {
   onBack: () => void;
 }
 
+// ─── Validação de CPF / CNPJ (dígitos verificadores) ──────────────────────────
+function isValidCpf(value: string): boolean {
+  const cpf = value.replace(/\D/g, '');
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(cpf[i], 10) * (10 - i);
+  let d1 = (sum * 10) % 11;
+  if (d1 === 10) d1 = 0;
+  if (d1 !== parseInt(cpf[9], 10)) return false;
+
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(cpf[i], 10) * (11 - i);
+  let d2 = (sum * 10) % 11;
+  if (d2 === 10) d2 = 0;
+  return d2 === parseInt(cpf[10], 10);
+}
+
+function isValidCnpj(value: string): boolean {
+  const cnpj = value.replace(/\D/g, '');
+  if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+
+  const digit = (len: number): number => {
+    const weights =
+      len === 12
+        ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+        : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    let sum = 0;
+    for (let i = 0; i < len; i++) sum += parseInt(cnpj[i], 10) * weights[i];
+    const r = sum % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+
+  return digit(12) === parseInt(cnpj[12], 10) && digit(13) === parseInt(cnpj[13], 10);
+}
+
+function isValidCpfCnpj(value: string): boolean {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length === 11) return isValidCpf(digits);
+  if (digits.length === 14) return isValidCnpj(digits);
+  return false;
+}
+
+function formatCpfCnpj(value: string): string {
+  const d = value.replace(/\D/g, '').slice(0, 14);
+  if (d.length <= 11) {
+    // 000.000.000-00
+    let out = d;
+    if (d.length > 3) out = `${d.slice(0, 3)}.${d.slice(3)}`;
+    if (d.length > 6) out = `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+    if (d.length > 9) out = `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+    return out;
+  }
+  // 00.000.000/0000-00
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
+
 const customerSchema = z.object({
   customerName: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres').max(100),
   customerEmail: z.string().email('Email inválido'),
   customerPhone: z.string().min(10, 'Telefone inválido').max(15),
+  customerCpf: z.string().refine(isValidCpfCnpj, 'CPF ou CNPJ inválido'),
 });
 
 export function CustomerStep({ bookingData, onUpdate, onNext, onBack }: CustomerStepProps) {
@@ -29,6 +87,7 @@ export function CustomerStep({ bookingData, onUpdate, onNext, onBack }: Customer
         customerName: bookingData.customerName,
         customerEmail: bookingData.customerEmail,
         customerPhone: bookingData.customerPhone,
+        customerCpf: bookingData.customerCpf,
       });
       setErrors({});
       return true;
@@ -62,6 +121,10 @@ export function CustomerStep({ bookingData, onUpdate, onNext, onBack }: Customer
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatPhone(e.target.value);
     onUpdate({ customerPhone: formatted });
+  };
+
+  const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdate({ customerCpf: formatCpfCnpj(e.target.value) });
   };
 
   return (
@@ -132,6 +195,29 @@ export function CustomerStep({ bookingData, onUpdate, onNext, onBack }: Customer
             />
             {errors.customerPhone && (
               <p className="text-destructive text-sm">{errors.customerPhone}</p>
+            )}
+          </div>
+
+          {/* CPF / CNPJ */}
+          <div className="space-y-2">
+            <Label htmlFor="cpf" className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-primary" />
+              CPF / CNPJ
+            </Label>
+            <Input
+              id="cpf"
+              inputMode="numeric"
+              value={bookingData.customerCpf}
+              onChange={handleCpfChange}
+              placeholder="000.000.000-00"
+              className="h-12"
+              maxLength={18}
+            />
+            <p className="text-muted-foreground text-xs">
+              Necessário para emitir a cobrança.
+            </p>
+            {errors.customerCpf && (
+              <p className="text-destructive text-sm">{errors.customerCpf}</p>
             )}
           </div>
         </div>

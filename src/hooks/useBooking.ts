@@ -14,6 +14,7 @@ const initialBookingData: BookingData = {
   customerName: '',
   customerEmail: '',
   customerPhone: '',
+  customerCpf: '',
   paymentMethod: 'pix',
 };
 
@@ -145,6 +146,7 @@ export function useBooking() {
         customerName,
         customerEmail,
         customerPhone,
+        customerCpf,
       } = bookingData;
 
       if (!timeSlot || !track || !date) {
@@ -176,17 +178,18 @@ export function useBooking() {
       const createdReservation: Reservation = reservationData.reservation;
       setReservation(createdReservation);
 
-      // Chama create-checkout para obter URL do Stripe
+      // Cria a cobrança na Asaas e obtém a URL da página de pagamento hospedada
       const dateStr = format(date, 'dd/MM/yyyy', { locale: ptBR });
       const timeStr = `${timeSlot.start_time.slice(0, 5)} - ${timeSlot.end_time.slice(0, 5)}`;
 
       const { data: checkoutData, error: checkoutError } =
-        await supabase.functions.invoke('create-checkout', {
+        await supabase.functions.invoke('create-asaas-charge', {
           body: {
             reservation_id: createdReservation.id,
             customer_name: customerName,
             customer_email: customerEmail,
             customer_phone: customerPhone,
+            cpf_cnpj: customerCpf,
             track_id: track.id,
             track_name: track.name,
             date: dateStr,
@@ -197,12 +200,12 @@ export function useBooking() {
         });
 
       if (checkoutError || !checkoutData?.url) {
-        console.error('Checkout error:', checkoutError);
-        toast.error('Erro ao iniciar pagamento. Tente novamente.');
+        console.error('Erro ao criar cobrança:', checkoutError, checkoutData);
+        toast.error(checkoutData?.error || 'Erro ao iniciar pagamento. Tente novamente.');
         return false;
       }
 
-      // Redireciona para o Stripe Checkout
+      // Redireciona para a página de pagamento da Asaas
       window.location.href = checkoutData.url;
       return false;
     } catch (error) {

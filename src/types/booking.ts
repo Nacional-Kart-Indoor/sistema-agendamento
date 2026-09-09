@@ -37,6 +37,8 @@ export interface Reservation {
   payment_method: string | null;
   status: ReservationStatus;
   payment_id: string | null;
+  reservation_code?: string | null;
+  checkout_url?: string | null;
   created_at: string;
   updated_at: string;
   time_slot?: TimeSlot;
@@ -51,6 +53,7 @@ export interface BookingData {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  customerCpf: string;
   paymentMethod: string;
 }
 

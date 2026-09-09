@@ -50,23 +50,22 @@ export default function Index() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payment = params.get('payment');
-    const sessionId = params.get('session_id');
     const reservationId = params.get('reservation_id');
 
-    if (payment === 'success' && sessionId && reservationId) {
+    if (payment === 'success' && reservationId) {
       setPaymentStatus('loading');
       window.history.replaceState({}, '', '/');
-      verifyPayment(sessionId, reservationId);
+      verifyPayment(reservationId);
     } else if (payment === 'cancelled') {
       setPaymentStatus('cancelled');
       window.history.replaceState({}, '', '/');
     }
   }, []);
 
-  const verifyPayment = async (sessionId: string, reservationId: string) => {
+  const verifyPayment = async (reservationId: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke('verify-checkout-session', {
-        body: { session_id: sessionId, reservation_id: reservationId },
+      const { data, error } = await supabase.functions.invoke('verify-asaas-payment', {
+        body: { reservation_id: reservationId },
       });
 
       if (!error && data?.reservation) {

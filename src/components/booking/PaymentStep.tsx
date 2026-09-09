@@ -82,6 +82,12 @@ export function PaymentStep({
             <span className="text-muted-foreground">Telefone</span>
             <span className="font-medium">{bookingData.customerPhone}</span>
           </div>
+          {bookingData.customerCpf && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">CPF / CNPJ</span>
+              <span className="font-medium">{bookingData.customerCpf}</span>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 p-4 rounded-lg bg-primary/10 border border-primary/20">
@@ -93,9 +99,12 @@ export function PaymentStep({
           </div>
         </div>
 
-        <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-          <ShieldCheck className="w-4 h-4 text-primary" />
-          <span>Você será redirecionado para o ambiente seguro do Stripe para concluir o pagamento.</span>
+        <div className="mt-4 flex items-start gap-2 text-xs text-muted-foreground">
+          <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+          <span>
+            Você será redirecionado para o ambiente seguro da Asaas. Pode pagar por
+            {' '}<strong>PIX, cartão de crédito ou débito</strong>.
+          </span>
         </div>
       </Card>
 
@@ -118,7 +127,7 @@ export function PaymentStep({
             </>
           ) : (
             <>
-              Pagar com Stripe
+              Ir para o pagamento
               <CreditCard className="w-5 h-5 ml-2" />
             </>
           )}

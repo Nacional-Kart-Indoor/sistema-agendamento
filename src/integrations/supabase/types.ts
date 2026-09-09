@@ -63,7 +63,11 @@ export type Database = {
       }
       reservations: {
         Row: {
+          abandonment_notified_at: string | null
+          asaas_customer_id: string | null
           battery_type: Database["public"]["Enums"]["battery_type"]
+          checkout_url: string | null
+          checkout_url_expires_at: string | null
           created_at: string | null
           customer_email: string
           customer_name: string
@@ -72,13 +76,18 @@ export type Database = {
           num_pilots: number
           payment_id: string | null
           payment_method: string | null
+          reservation_code: string | null
           status: Database["public"]["Enums"]["reservation_status"]
           time_slot_id: string
           updated_at: string | null
           valor_total: number
         }
         Insert: {
+          abandonment_notified_at?: string | null
+          asaas_customer_id?: string | null
           battery_type?: Database["public"]["Enums"]["battery_type"]
+          checkout_url?: string | null
+          checkout_url_expires_at?: string | null
           created_at?: string | null
           customer_email: string
           customer_name: string
@@ -87,13 +96,18 @@ export type Database = {
           num_pilots?: number
           payment_id?: string | null
           payment_method?: string | null
+          reservation_code?: string | null
           status?: Database["public"]["Enums"]["reservation_status"]
           time_slot_id: string
           updated_at?: string | null
           valor_total: number
         }
         Update: {
+          abandonment_notified_at?: string | null
+          asaas_customer_id?: string | null
           battery_type?: Database["public"]["Enums"]["battery_type"]
+          checkout_url?: string | null
+          checkout_url_expires_at?: string | null
           created_at?: string | null
           customer_email?: string
           customer_name?: string
@@ -102,6 +116,7 @@ export type Database = {
           num_pilots?: number
           payment_id?: string | null
           payment_method?: string | null
+          reservation_code?: string | null
           status?: Database["public"]["Enums"]["reservation_status"]
           time_slot_id?: string
           updated_at?: string | null
