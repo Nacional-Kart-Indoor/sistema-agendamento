@@ -51,7 +51,7 @@ export async function asaasFetch(path: string, init: RequestInit = {}): Promise<
 
   if (!res.ok) {
     const description = json?.errors?.[0]?.description || text || res.statusText;
-    const err: AsaasHttpError = new Error(`Asaas ${res.status}: ${description}`);
+    const err = new Error(`Asaas ${res.status}: ${description}`) as AsaasHttpError;
     err.status = res.status;
     err.body = json ?? text;
     throw err;
