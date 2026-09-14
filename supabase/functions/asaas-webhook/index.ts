@@ -374,8 +374,11 @@ serve(async (req) => {
         .update({
           status: "paid",
           payment_id: payment.id,
-          // Valor CRU do billingType retornado pela Asaas. Para débito na página
-          // hospedada a doc não confirma a string — ver T3 antes de ramificar.
+          // Valor CRU do billingType retornado pela Asaas: "PIX" ou "CREDIT_CARD".
+          // Decisão (sessão 6): a Asaas não expõe se um pagamento com cartão foi
+          // crédito ou débito em nenhum campo documentado (nem billingType, nem
+          // GET /payments/{id}/billingInfo) — tratar cartão como categoria única,
+          // sem tentar diferenciar. Não ramificar por essa distinção em nenhum lugar.
           payment_method: payment.billingType || "asaas",
           reservation_code: reservationCode,
         })
