@@ -171,13 +171,14 @@ serve(async (req) => {
 
     // ── Cobrança hospedada (redirect) ───────────────────────────────────────
     // O autoRedirect da Asaas só funciona se o domínio do successUrl bater com
-    // o cadastrado nos dados comerciais da conta (www.nacionalkartindoor.com.br).
-    // PUBLIC_SITE_URL força esse domínio (útil em preview/sandbox, onde o header
-    // Origin seria o domínio da Vercel). Sem o secret, usa o Origin da request.
+    // o cadastrado nos dados comerciais da conta (nacionalkartindoor.com.br, sem www —
+    // www redireciona pro apex em produção). PUBLIC_SITE_URL força esse domínio
+    // (útil em preview/sandbox, onde o header Origin seria o domínio da Vercel).
+    // Sem o secret, usa o Origin da request.
     const origin =
       Deno.env.get("PUBLIC_SITE_URL")?.replace(/\/+$/, "") ||
       req.headers.get("origin") ||
-      "https://www.nacionalkartindoor.com.br";
+      "https://nacionalkartindoor.com.br";
     const dueDate = dueDateInDays(DUE_IN_DAYS);
     const description =
       `Bateria ${battery_type === "kids" ? "Kids" : "Individual"} - ${track_name || track.name}` +
