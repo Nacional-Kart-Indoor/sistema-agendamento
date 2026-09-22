@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -127,6 +127,7 @@ export type Database = {
       reservations: {
         Row: {
           abandonment_notified_at: string | null
+          asaas_customer_id: string | null
           battery_type: Database["public"]["Enums"]["battery_type"]
           checkout_url: string | null
           checkout_url_expires_at: string | null
@@ -146,6 +147,7 @@ export type Database = {
         }
         Insert: {
           abandonment_notified_at?: string | null
+          asaas_customer_id?: string | null
           battery_type?: Database["public"]["Enums"]["battery_type"]
           checkout_url?: string | null
           checkout_url_expires_at?: string | null
@@ -165,6 +167,7 @@ export type Database = {
         }
         Update: {
           abandonment_notified_at?: string | null
+          asaas_customer_id?: string | null
           battery_type?: Database["public"]["Enums"]["battery_type"]
           checkout_url?: string | null
           checkout_url_expires_at?: string | null
