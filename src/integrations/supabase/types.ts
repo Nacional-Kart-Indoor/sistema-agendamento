@@ -128,7 +128,10 @@ export type Database = {
         Row: {
           abandonment_notified_at: string | null
           asaas_customer_id: string | null
+          attendance_status: string | null
           battery_type: Database["public"]["Enums"]["battery_type"]
+          checked_in_at: string | null
+          checked_in_by: string | null
           checkout_url: string | null
           checkout_url_expires_at: string | null
           created_at: string | null
@@ -148,7 +151,10 @@ export type Database = {
         Insert: {
           abandonment_notified_at?: string | null
           asaas_customer_id?: string | null
+          attendance_status?: string | null
           battery_type?: Database["public"]["Enums"]["battery_type"]
+          checked_in_at?: string | null
+          checked_in_by?: string | null
           checkout_url?: string | null
           checkout_url_expires_at?: string | null
           created_at?: string | null
@@ -168,7 +174,10 @@ export type Database = {
         Update: {
           abandonment_notified_at?: string | null
           asaas_customer_id?: string | null
+          attendance_status?: string | null
           battery_type?: Database["public"]["Enums"]["battery_type"]
+          checked_in_at?: string | null
+          checked_in_by?: string | null
           checkout_url?: string | null
           checkout_url_expires_at?: string | null
           created_at?: string | null
@@ -405,6 +414,10 @@ export type Database = {
         Returns: boolean
       }
       recalc_slot_occupancy: { Args: { slot_id: string }; Returns: undefined }
+      set_attendance: {
+        Args: { p_id: string; p_status: string }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "atendente" | "admin"

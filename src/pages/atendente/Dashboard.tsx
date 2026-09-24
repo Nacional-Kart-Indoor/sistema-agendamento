@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarDays, LogOut, Plus, Trash2, Loader2, Phone, Users, ShieldCheck, Search, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { CalendarDays, LogOut, Plus, Trash2, Loader2, Phone, Users, ShieldCheck, Search, CheckCircle2, XCircle, Clock, ClipboardCheck } from 'lucide-react';
 import { NewBookingDialog } from '@/components/atendente/NewBookingDialog';
 import { toast } from 'sonner';
 
@@ -191,10 +191,16 @@ export default function AtendenteDashboard() {
               <p className="text-xs text-muted-foreground">{user.email}</p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Sair
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate('/atendente/presenca')}>
+              <ClipboardCheck className="w-4 h-4 mr-2" />
+              Conferência de Presença
+            </Button>
+            <Button variant="ghost" size="sm" onClick={signOut}>
+              <LogOut className="w-4 h-4 mr-2" />
+              Sair
+            </Button>
+          </div>
         </div>
       </header>
 
