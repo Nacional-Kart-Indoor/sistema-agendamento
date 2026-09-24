@@ -31,7 +31,7 @@ A execução será dividida em **3 fases independentes** — cada uma só começ
 ### Frontend (fluxo de reserva do cliente)
 - `DateStep` e `DetailsStep` passam a ler diretamente de `time_slots` (sem chamar N8N)
 - Mantém o visual de "vagas disponíveis" por horário
-- Sem mudança no fluxo de pagamento Stripe
+- Sem mudança no fluxo de pagamento (Asaas — migrado do Stripe)
 
 ### Limpeza
 - Remover edge functions: `check-calendar-availability`, `get-calendar-slots`, `send-webhook`
@@ -64,7 +64,7 @@ Acessível somente para usuários com role `atendente` ou `admin`. Conteúdo:
 
 ### Permissões
 - Atendente: ver tudo + criar e excluir `manual_bookings`
-- Atendente **não** edita nem cancela reservas online (mantém integridade do pagamento Stripe)
+- Atendente **não** edita nem cancela reservas online (mantém integridade do pagamento Asaas)
 - Substitui a página `/recepcao` atual (que era sem login) — vai ser removida ou também ficar atrás de login
 
 ---
@@ -76,7 +76,7 @@ Feita só depois das fases 1 e 2 validadas em produção.
 1. Publicar versão final no Lovable
 2. Conectar repositório GitHub pelo menu **+ → GitHub → Connect project**
 3. Criar o repositório (sync bidirecional fica ativo)
-4. Configurar manualmente os secrets em qualquer ambiente de deploy externo (Stripe, Supabase, etc — não vão pro GitHub)
+4. Configurar manualmente os secrets em qualquer ambiente de deploy externo (Asaas, Supabase, etc — não vão pro GitHub)
 5. Opcional: documentar no README como rodar localmente
 
 > Importante: conectar ao GitHub **não** desconecta o projeto do Lovable. Você pode continuar editando aqui e no GitHub em paralelo.
