@@ -96,7 +96,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (authLoading) return;
     if (!user) { navigate('/atendente/login', { replace: true }); return; }
-    if (!isAdmin) { toast.error('Acesso restrito a administradores.'); navigate('/atendente', { replace: true }); }
+    if (!isAdmin) { toast.error('Acesso restrito a administradores.'); navigate('/atendente/presenca', { replace: true }); }
   }, [authLoading, user, isAdmin, navigate]);
 
   const loadReservations = useCallback(async (p: Periodo) => {

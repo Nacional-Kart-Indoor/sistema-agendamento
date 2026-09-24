@@ -8,7 +8,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ArrowLeft, CalendarDays, Loader2, Phone, Users, Printer, Check, X } from 'lucide-react';
+import { LogOut, CalendarDays, Loader2, Phone, Users, Printer, Check, X, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 type AttendanceStatus = 'present' | 'absent' | null;
@@ -24,7 +24,7 @@ interface Entry {
 
 export default function Presenca() {
   const navigate = useNavigate();
-  const { user, isStaff, loading: authLoading } = useAtendenteAuth();
+  const { user, isStaff, loading: authLoading, signOut } = useAtendenteAuth();
   const [date, setDate] = useState<Date>(new Date());
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -100,15 +100,22 @@ export default function Presenca() {
       <header className="border-b border-border bg-card print:hidden">
         <div className="container max-w-4xl mx-auto px-4 py-4 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/atendente')}>
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <h1 className="font-racing text-lg font-bold leading-tight">Conferência de Presença</h1>
+            <ShieldCheck className="w-6 h-6 text-primary" />
+            <div>
+              <h1 className="font-racing text-lg font-bold leading-tight">Conferência de Presença</h1>
+              <p className="text-xs text-muted-foreground">{user?.email}</p>
+            </div>
           </div>
-          <Button variant="outline" onClick={() => window.print()}>
-            <Printer className="w-4 h-4 mr-2" />
-            Baixar PDF
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => window.print()}>
+              <Printer className="w-4 h-4 mr-2" />
+              Baixar PDF
+            </Button>
+            <Button variant="ghost" size="sm" onClick={signOut}>
+              <LogOut className="w-4 h-4 mr-2" />
+              Sair
+            </Button>
+          </div>
         </div>
       </header>
 

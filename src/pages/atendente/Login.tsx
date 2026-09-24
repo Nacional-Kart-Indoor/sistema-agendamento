@@ -18,7 +18,7 @@ export default function AtendenteLogin() {
 
   useEffect(() => {
     if (!authLoading && session && isStaff) {
-      navigate('/atendente', { replace: true });
+      navigate('/atendente/presenca', { replace: true });
     }
   }, [session, isStaff, authLoading, navigate]);
 
@@ -33,7 +33,7 @@ export default function AtendenteLogin() {
       return;
     }
     toast.success('Bem-vinda!');
-    navigate('/atendente', { replace: true });
+    navigate('/atendente/presenca', { replace: true });
   };
 
   return (
