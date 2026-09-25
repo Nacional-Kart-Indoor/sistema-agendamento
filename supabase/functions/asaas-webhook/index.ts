@@ -204,18 +204,24 @@ async function sendWhatsApp(reservation: any, slot: any, reservationCode: string
   const totalFormatted = `R$ ${(reservation.valor_total || 0).toFixed(2).replace(".", ",")}`;
 
   const message = [
-    `✅ *Reserva confirmada! Nacional Kart Indoor*`,
+    `🎉 Reserva confirmada, ${reservation.customer_name}!`,
     ``,
-    `📅 *Data:* ${formatDate(slotDate)}`,
-    `⏰ *Horário:* ${slotTime}`,
-    `👥 *Pilotos:* ${numPilots}`,
-    `🏁 *Pista:* Kartódromo Principal`,
-    `💰 *Valor pago:* ${totalFormatted}`,
+    `🏁 Nacional Kart Indoor – Shopping Cerrado`,
+    `🔖 Código: ${reservationCode}`,
+    `🗓️ ${formatDate(slotDate)} às ${slotTime}`,
+    `🏎️ Pista: Kartódromo Principal`,
+    `👥 Pilotos: ${numPilots}`,
+    `💰 Valor: ${totalFormatted}`,
     ``,
-    `🎫 *Código de reserva: ${reservationCode}*`,
+    `📍 Estacionamento coberto, ao lado do acesso 1.`,
     ``,
-    `Apresente este código na recepção ao chegar.`,
-    `Até logo! 🏎️`,
+    `⚠️ Antes de vir:`,
+    `👟 Sapato fechado obrigatório`,
+    `🪪 Documento com foto obrigatório`,
+    `📏 Altura mínima de 1,50m`,
+    `👨‍👩‍👧 Menor de idade? Um responsável precisa estar presente pra assinar o termo.`,
+    ``,
+    `Te esperamos! 🏁`,
   ].join("\n");
 
   // 1) Cliente — prioridade 1, envio direto e imediato (só passa pelo filtro de 2s)

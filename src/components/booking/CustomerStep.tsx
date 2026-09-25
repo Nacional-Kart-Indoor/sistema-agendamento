@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { BookingData } from '@/types/booking';
 import { ArrowLeft, ArrowRight, User, Mail, Phone, FileText } from 'lucide-react';
 import { z } from 'zod';
@@ -80,6 +81,9 @@ const customerSchema = z.object({
 
 export function CustomerStep({ bookingData, onUpdate, onNext, onBack }: CustomerStepProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [ackMinor, setAckMinor] = useState(false);
+  const [ackHeight, setAckHeight] = useState(false);
+  const [ackError, setAckError] = useState(false);
 
   const validate = () => {
     try {
@@ -106,7 +110,10 @@ export function CustomerStep({ bookingData, onUpdate, onNext, onBack }: Customer
   };
 
   const handleNext = () => {
-    if (validate()) {
+    const dataOk = validate();
+    const ackOk = ackMinor && ackHeight;
+    setAckError(!ackOk);
+    if (dataOk && ackOk) {
       onNext();
     }
   };
@@ -221,6 +228,38 @@ export function CustomerStep({ bookingData, onUpdate, onNext, onBack }: Customer
             )}
           </div>
         </div>
+      </Card>
+
+      <Card className="card-racing p-6 mt-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="ack-height"
+            checked={ackHeight}
+            onCheckedChange={(v) => setAckHeight(v === true)}
+            className="mt-0.5"
+          />
+          <Label htmlFor="ack-height" className="text-sm font-normal leading-snug cursor-pointer">
+            Estou ciente de que a Pista Adulto exige <strong>altura mínima de 1,50m</strong>. Reservas
+            feitas para pilotos abaixo dessa altura não garantem participação.
+          </Label>
+        </div>
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="ack-minor"
+            checked={ackMinor}
+            onCheckedChange={(v) => setAckMinor(v === true)}
+            className="mt-0.5"
+          />
+          <Label htmlFor="ack-minor" className="text-sm font-normal leading-snug cursor-pointer">
+            Estou ciente de que, caso haja <strong>menores de idade</strong> entre os pilotos, um
+            responsável deve estar presente para assinar o termo de responsabilidade no local.
+          </Label>
+        </div>
+        {ackError && (
+          <p className="text-destructive text-sm">
+            Marque as duas opções acima para continuar.
+          </p>
+        )}
       </Card>
 
       <div className="flex justify-between mt-8">

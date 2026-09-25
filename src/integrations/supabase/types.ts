@@ -39,6 +39,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      feriados: {
+        Row: {
+          created_at: string
+          data: string
+          descricao: string
+          id: string
+          origem: string
+        }
+        Insert: {
+          created_at?: string
+          data: string
+          descricao: string
+          id?: string
+          origem?: string
+        }
+        Update: {
+          created_at?: string
+          data?: string
+          descricao?: string
+          id?: string
+          origem?: string
+        }
+        Relationships: []
+      }
       manual_bookings: {
         Row: {
           battery_type: Database["public"]["Enums"]["battery_type"]
@@ -391,6 +415,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      easter_sunday: { Args: { p_year: number }; Returns: string }
       generate_future_time_slots: { Args: never; Returns: undefined }
       get_slot_availability: {
         Args: { p_date: string }
@@ -413,11 +438,17 @@ export type Database = {
         }
         Returns: boolean
       }
+      populate_holidays: { Args: { p_year: number }; Returns: undefined }
       recalc_slot_occupancy: { Args: { slot_id: string }; Returns: undefined }
       set_attendance: {
         Args: { p_id: string; p_status: string }
         Returns: undefined
       }
+      set_manual_holiday: {
+        Args: { p_data: string; p_descricao: string }
+        Returns: undefined
+      }
+      unset_manual_holiday: { Args: { p_data: string }; Returns: undefined }
     }
     Enums: {
       app_role: "atendente" | "admin"
@@ -559,3 +590,5 @@ export const Constants = {
     },
   },
 } as const
+A new version of Supabase CLI is available: v2.118.0 (currently installed v2.117.0)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

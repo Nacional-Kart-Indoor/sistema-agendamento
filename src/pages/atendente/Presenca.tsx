@@ -5,13 +5,16 @@ import { useAtendenteAuth } from '@/hooks/useAtendenteAuth';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { LogOut, CalendarDays, Loader2, Phone, Users, Printer, Check, X, ShieldCheck } from 'lucide-react';
+import { LogOut, CalendarDays, Loader2, Phone, Users, Printer, Check, X, ShieldCheck, Flag, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 type AttendanceStatus = 'present' | 'absent' | null;
+type Tab = 'presenca' | 'feriados';
 
 interface Entry {
   id: string;
@@ -22,13 +25,27 @@ interface Entry {
   attendance_status: AttendanceStatus;
 }
 
+interface Holiday {
+  data: string;
+  descricao: string;
+  origem: 'nacional' | 'municipal' | 'manual';
+}
+
 export default function Presenca() {
   const navigate = useNavigate();
   const { user, isStaff, loading: authLoading, signOut } = useAtendenteAuth();
+  const [tab, setTab] = useState<Tab>('presenca');
+
   const [date, setDate] = useState<Date>(new Date());
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [holidaysLoading, setHolidaysLoading] = useState(false);
+  const [newHolidayDate, setNewHolidayDate] = useState<Date | undefined>();
+  const [newHolidayDesc, setNewHolidayDesc] = useState('');
+  const [savingHoliday, setSavingHoliday] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/atendente/login', { replace: true });
@@ -62,9 +79,23 @@ export default function Presenca() {
     setLoading(false);
   }, []);
 
+  const loadHolidays = useCallback(async () => {
+    setHolidaysLoading(true);
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const { data } = await supabase
+      .from('feriados')
+      .select('data, descricao, origem')
+      .gte('data', todayStr)
+      .order('data');
+    setHolidays((data || []) as Holiday[]);
+    setHolidaysLoading(false);
+  }, []);
+
   useEffect(() => {
-    if (user && isStaff) loadDay(date);
-  }, [date, user, isStaff, loadDay]);
+    if (!user || !isStaff) return;
+    if (tab === 'presenca') loadDay(date);
+    if (tab === 'feriados') loadHolidays();
+  }, [tab, date, user, isStaff, loadDay, loadHolidays]);
 
   const setAttendance = async (entry: Entry, status: AttendanceStatus) => {
     const next = entry.attendance_status === status ? null : status;
@@ -79,6 +110,34 @@ export default function Presenca() {
       return;
     }
     setEntries((prev) => prev.map((e) => (e.id === entry.id ? { ...e, attendance_status: next } : e)));
+  };
+
+  const handleMarkHoliday = async () => {
+    if (!newHolidayDate) return;
+    setSavingHoliday(true);
+    const { error } = await supabase.rpc('set_manual_holiday', {
+      p_data: format(newHolidayDate, 'yyyy-MM-dd'),
+      p_descricao: newHolidayDesc,
+    });
+    setSavingHoliday(false);
+    if (error) {
+      toast.error('Erro ao sinalizar feriado');
+      return;
+    }
+    toast.success('Feriado sinalizado — horários passam a ser 10h-22h nesse dia.');
+    setNewHolidayDate(undefined);
+    setNewHolidayDesc('');
+    loadHolidays();
+  };
+
+  const handleUnmarkHoliday = async (data: string) => {
+    const { error } = await supabase.rpc('unset_manual_holiday', { p_data: data });
+    if (error) {
+      toast.error('Erro ao remover feriado');
+      return;
+    }
+    toast.success('Feriado removido');
+    loadHolidays();
   };
 
   const counts = useMemo(() => {
@@ -102,20 +161,39 @@ export default function Presenca() {
           <div className="flex items-center gap-3">
             <ShieldCheck className="w-6 h-6 text-primary" />
             <div>
-              <h1 className="font-racing text-lg font-bold leading-tight">Conferência de Presença</h1>
+              <h1 className="font-racing text-lg font-bold leading-tight">Painel da Atendente</h1>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => window.print()}>
-              <Printer className="w-4 h-4 mr-2" />
-              Baixar PDF
-            </Button>
+            {tab === 'presenca' && (
+              <Button variant="outline" onClick={() => window.print()}>
+                <Printer className="w-4 h-4 mr-2" />
+                Baixar PDF
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={signOut}>
               <LogOut className="w-4 h-4 mr-2" />
               Sair
             </Button>
           </div>
+        </div>
+        <div className="container max-w-4xl mx-auto px-4 flex gap-1">
+          {([
+            { id: 'presenca' as const, label: 'Presença' },
+            { id: 'feriados' as const, label: 'Feriados' },
+          ]).map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={cn(
+                'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors',
+                tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
       </header>
 
@@ -128,103 +206,184 @@ export default function Presenca() {
         </p>
       </div>
 
-      <main className="container max-w-4xl mx-auto px-4 py-6 space-y-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap print:hidden">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline">
-                <CalendarDays className="w-4 h-4 mr-2" />
-                {format(date, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar mode="single" selected={date} onSelect={(d) => d && setDate(d)} locale={ptBR} className="pointer-events-auto" />
-            </PopoverContent>
-          </Popover>
-          {loading && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />}
-        </div>
+      {tab === 'presenca' && (
+        <main className="container max-w-4xl mx-auto px-4 py-6 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap print:hidden">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline">
+                  <CalendarDays className="w-4 h-4 mr-2" />
+                  {format(date, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="single" selected={date} onSelect={(d) => d && setDate(d)} locale={ptBR} className="pointer-events-auto" />
+              </PopoverContent>
+            </Popover>
+            {loading && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />}
+          </div>
 
-        <div className="grid grid-cols-4 gap-2 text-center">
-          <Card className="p-3">
-            <p className="text-2xl font-bold">{counts.total}</p>
-            <p className="text-xs text-muted-foreground">Total</p>
-          </Card>
-          <Card className="p-3">
-            <p className="text-2xl font-bold text-racing-green">{counts.present}</p>
-            <p className="text-xs text-muted-foreground">Presentes</p>
-          </Card>
-          <Card className="p-3">
-            <p className="text-2xl font-bold text-destructive">{counts.absent}</p>
-            <p className="text-xs text-muted-foreground">Faltaram</p>
-          </Card>
-          <Card className="p-3">
-            <p className="text-2xl font-bold text-muted-foreground">{counts.pending}</p>
-            <p className="text-xs text-muted-foreground">Pendentes</p>
-          </Card>
-        </div>
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <Card className="p-3">
+              <p className="text-2xl font-bold">{counts.total}</p>
+              <p className="text-xs text-muted-foreground">Total</p>
+            </Card>
+            <Card className="p-3">
+              <p className="text-2xl font-bold text-racing-green">{counts.present}</p>
+              <p className="text-xs text-muted-foreground">Presentes</p>
+            </Card>
+            <Card className="p-3">
+              <p className="text-2xl font-bold text-destructive">{counts.absent}</p>
+              <p className="text-xs text-muted-foreground">Faltaram</p>
+            </Card>
+            <Card className="p-3">
+              <p className="text-2xl font-bold text-muted-foreground">{counts.pending}</p>
+              <p className="text-xs text-muted-foreground">Pendentes</p>
+            </Card>
+          </div>
 
-        {entries.length === 0 && !loading && (
-          <Card className="p-6 text-center text-muted-foreground">
-            Nenhuma reserva paga para essa data.
-          </Card>
-        )}
+          {entries.length === 0 && !loading && (
+            <Card className="p-6 text-center text-muted-foreground">
+              Nenhuma reserva paga para essa data.
+            </Card>
+          )}
 
-        <div className="space-y-2 print:space-y-1">
-          {entries.map((entry) => {
-            const statusLabel =
-              entry.attendance_status === 'present' ? 'Presente' : entry.attendance_status === 'absent' ? 'Faltou' : 'Pendente';
-            return (
-              <Card key={entry.id} className="p-3 flex items-center justify-between gap-3 flex-wrap print:break-inside-avoid">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="font-racing font-bold text-lg w-14">{entry.start_time.slice(0, 5)}</span>
-                  <div>
-                    <p className="font-medium leading-tight">{entry.customer_name}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-3">
-                      <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{entry.customer_phone}</span>
-                      <span className="flex items-center gap-1"><Users className="w-3 h-3" />{entry.num_pilots}</span>
-                    </p>
+          <div className="space-y-2 print:space-y-1">
+            {entries.map((entry) => {
+              const statusLabel =
+                entry.attendance_status === 'present' ? 'Presente' : entry.attendance_status === 'absent' ? 'Faltou' : 'Pendente';
+              return (
+                <Card key={entry.id} className="p-3 flex items-center justify-between gap-3 flex-wrap print:break-inside-avoid">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="font-racing font-bold text-lg w-14">{entry.start_time.slice(0, 5)}</span>
+                    <div>
+                      <p className="font-medium leading-tight">{entry.customer_name}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-3">
+                        <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{entry.customer_phone}</span>
+                        <span className="flex items-center gap-1"><Users className="w-3 h-3" />{entry.num_pilots}</span>
+                      </p>
+                    </div>
                   </div>
-                </div>
 
-                {/* Tela: botões */}
-                <div className="flex items-center gap-2 print:hidden">
-                  <Button
-                    size="sm"
-                    variant={entry.attendance_status === 'present' ? 'success' : 'outline'}
-                    disabled={savingId === entry.id}
-                    onClick={() => setAttendance(entry, 'present')}
-                  >
-                    <Check className="w-4 h-4 mr-1" />
-                    Presente
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={entry.attendance_status === 'absent' ? 'destructive' : 'outline'}
-                    disabled={savingId === entry.id}
-                    onClick={() => setAttendance(entry, 'absent')}
-                  >
-                    <X className="w-4 h-4 mr-1" />
-                    Faltou
-                  </Button>
-                </div>
+                  {/* Tela: botões */}
+                  <div className="flex items-center gap-2 print:hidden">
+                    <Button
+                      size="sm"
+                      variant={entry.attendance_status === 'present' ? 'success' : 'outline'}
+                      disabled={savingId === entry.id}
+                      onClick={() => setAttendance(entry, 'present')}
+                    >
+                      <Check className="w-4 h-4 mr-1" />
+                      Presente
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={entry.attendance_status === 'absent' ? 'destructive' : 'outline'}
+                      disabled={savingId === entry.id}
+                      onClick={() => setAttendance(entry, 'absent')}
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Faltou
+                    </Button>
+                  </div>
 
-                {/* Impressão: texto do status */}
-                <span
-                  className={`hidden print:inline font-bold text-sm ${
-                    entry.attendance_status === 'present'
-                      ? 'text-racing-green'
-                      : entry.attendance_status === 'absent'
-                        ? 'text-destructive'
-                        : 'text-muted-foreground'
-                  }`}
-                >
-                  {statusLabel}
-                </span>
-              </Card>
-            );
-          })}
-        </div>
-      </main>
+                  {/* Impressão: texto do status */}
+                  <span
+                    className={`hidden print:inline font-bold text-sm ${
+                      entry.attendance_status === 'present'
+                        ? 'text-racing-green'
+                        : entry.attendance_status === 'absent'
+                          ? 'text-destructive'
+                          : 'text-muted-foreground'
+                    }`}
+                  >
+                    {statusLabel}
+                  </span>
+                </Card>
+              );
+            })}
+          </div>
+        </main>
+      )}
+
+      {tab === 'feriados' && (
+        <main className="container max-w-2xl mx-auto px-4 py-6 space-y-4">
+          <Card className="p-4">
+            <h2 className="font-semibold text-sm mb-3 flex items-center gap-2">
+              <Flag className="w-4 h-4 text-primary" />
+              Sinalizar feriado
+            </h2>
+            <p className="text-xs text-muted-foreground mb-3">
+              No dia marcado como feriado, os horários passam a abrir das 10h às 22h (em vez de 14h às 22h).
+              Feriados nacionais e municipais já ficam marcados automaticamente — use isto só pra pontos
+              facultativos ou datas extras.
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="min-w-[180px] justify-start">
+                    <CalendarDays className="w-4 h-4 mr-2" />
+                    {newHolidayDate ? format(newHolidayDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : 'Escolher data'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={newHolidayDate}
+                    onSelect={setNewHolidayDate}
+                    locale={ptBR}
+                    disabled={{ before: new Date() }}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+              <Input
+                placeholder="Descrição (opcional)"
+                value={newHolidayDesc}
+                onChange={(e) => setNewHolidayDesc(e.target.value)}
+                className="flex-1 min-w-[160px]"
+              />
+              <Button variant="racing" onClick={handleMarkHoliday} disabled={!newHolidayDate || savingHoliday}>
+                {savingHoliday ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Flag className="w-4 h-4 mr-2" />}
+                Sinalizar feriado
+              </Button>
+            </div>
+          </Card>
+
+          <div>
+            <h2 className="font-semibold text-sm mb-2 px-1">Próximos feriados</h2>
+            {holidaysLoading && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground mx-auto my-4" />}
+            {!holidaysLoading && holidays.length === 0 && (
+              <Card className="p-6 text-center text-muted-foreground">Nenhum feriado cadastrado a partir de hoje.</Card>
+            )}
+            <div className="space-y-1.5">
+              {holidays.map((h) => (
+                <Card key={h.data} className="p-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="font-racing font-bold text-sm w-24">
+                      {format(new Date(`${h.data}T12:00:00`), 'dd/MM/yyyy', { locale: ptBR })}
+                    </span>
+                    <span className="text-sm">{h.descricao}</span>
+                    <span className={cn(
+                      'text-[10px] px-2 py-0.5 rounded-full border',
+                      h.origem === 'nacional' && 'border-primary text-primary',
+                      h.origem === 'municipal' && 'border-secondary text-secondary',
+                      h.origem === 'manual' && 'border-muted-foreground text-muted-foreground',
+                    )}>
+                      {h.origem}
+                    </span>
+                  </div>
+                  {h.origem === 'manual' && (
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUnmarkHoliday(h.data)}>
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                  )}
+                </Card>
+              ))}
+            </div>
+          </div>
+        </main>
+      )}
     </div>
   );
 }
