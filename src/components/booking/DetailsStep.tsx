@@ -10,6 +10,10 @@ import { ptBR } from 'date-fns/locale';
 import { ArrowLeft, ArrowRight, Clock, MapPin, Users, Zap, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// A Pista Kids tem card próprio com as regras (altura, tempo, sem agendamento)
+// em vez da descrição curta que vem do banco.
+const isKidsTrack = (name: string) => /kids/i.test(name);
+
 interface DetailsStepProps {
   bookingData: BookingData;
   tracks: Track[];
@@ -104,10 +108,21 @@ export function DetailsStep({
                   <RadioGroupItem value={track.id} className="sr-only" />
                   <div className="flex-1">
                     <p className="font-semibold">{track.name}</p>
-                    <p className="text-sm text-muted-foreground">{track.description}</p>
+                    {isKidsTrack(track.name) ? (
+                      <ul className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                        <li>📏 Crianças de 1,25m a 1,50m</li>
+                        <li>🕒 10 min de corrida</li>
+                        <li>👦 1 criança por vez, com total segurança</li>
+                        <li className="text-secondary font-medium">📌 Sem agendamento: por ordem de chegada</li>
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">{track.description}</p>
+                    )}
                     <p className="text-sm mt-1">
                       <span className="text-primary font-semibold">R$ {track.price_per_pilot.toFixed(2)}</span>
-                      <span className="text-muted-foreground"> / piloto</span>
+                      <span className="text-muted-foreground">
+                        {isKidsTrack(track.name) ? ' (com blusa + balaclava)' : ' / piloto'}
+                      </span>
                     </p>
                   </div>
                   <div className={cn(
