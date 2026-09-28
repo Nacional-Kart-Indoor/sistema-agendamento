@@ -148,6 +148,38 @@ export type Database = {
           },
         ]
       }
+      reservation_pilots: {
+        Row: {
+          cpf: string
+          created_at: string
+          id: string
+          nome: string
+          reservation_id: string
+        }
+        Insert: {
+          cpf: string
+          created_at?: string
+          id?: string
+          nome: string
+          reservation_id: string
+        }
+        Update: {
+          cpf?: string
+          created_at?: string
+          id?: string
+          nome?: string
+          reservation_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reservation_pilots_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: false
+            referencedRelation: "reservations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reservations: {
         Row: {
           abandonment_notified_at: string | null
@@ -159,6 +191,7 @@ export type Database = {
           checkout_url: string | null
           checkout_url_expires_at: string | null
           created_at: string | null
+          customer_cpf: string | null
           customer_email: string
           customer_name: string
           customer_phone: string
@@ -166,6 +199,8 @@ export type Database = {
           num_pilots: number
           payment_id: string | null
           payment_method: string | null
+          pilotos_completos: boolean
+          pilotos_token: string | null
           reservation_code: string | null
           status: Database["public"]["Enums"]["reservation_status"]
           time_slot_id: string
@@ -182,6 +217,7 @@ export type Database = {
           checkout_url?: string | null
           checkout_url_expires_at?: string | null
           created_at?: string | null
+          customer_cpf?: string | null
           customer_email: string
           customer_name: string
           customer_phone: string
@@ -189,6 +225,8 @@ export type Database = {
           num_pilots?: number
           payment_id?: string | null
           payment_method?: string | null
+          pilotos_completos?: boolean
+          pilotos_token?: string | null
           reservation_code?: string | null
           status?: Database["public"]["Enums"]["reservation_status"]
           time_slot_id: string
@@ -205,6 +243,7 @@ export type Database = {
           checkout_url?: string | null
           checkout_url_expires_at?: string | null
           created_at?: string | null
+          customer_cpf?: string | null
           customer_email?: string
           customer_name?: string
           customer_phone?: string
@@ -212,6 +251,8 @@ export type Database = {
           num_pilots?: number
           payment_id?: string | null
           payment_method?: string | null
+          pilotos_completos?: boolean
+          pilotos_token?: string | null
           reservation_code?: string | null
           status?: Database["public"]["Enums"]["reservation_status"]
           time_slot_id?: string
@@ -590,5 +631,3 @@ export const Constants = {
     },
   },
 } as const
-A new version of Supabase CLI is available: v2.118.0 (currently installed v2.117.0)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

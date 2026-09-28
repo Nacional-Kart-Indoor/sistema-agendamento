@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { LogOut, CalendarDays, Loader2, Phone, Users, Printer, Check, X, ShieldCheck, Flag, Trash2 } from 'lucide-react';
+import { LogOut, CalendarDays, Loader2, Phone, Users, Printer, Check, X, ShieldCheck, Flag, Trash2, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +23,25 @@ interface Entry {
   num_pilots: number;
   start_time: string;
   attendance_status: AttendanceStatus;
+  pilotos_completos: boolean;
+  pilotosCadastrados: number;
+  payment_method: string | null;
+}
+
+// billingType cru da Asaas → rótulo pra atendente. A Asaas não diferencia
+// crédito de débito (ambos vêm como CREDIT_CARD), então é só "Cartão".
+function paymentLabel(method: string | null): string {
+  switch (method) {
+    case 'PIX':
+      return 'PIX';
+    case 'CREDIT_CARD':
+    case 'DEBIT_CARD':
+      return 'Cartão';
+    case 'BOLETO':
+      return 'Boleto';
+    default:
+      return '—';
+  }
 }
 
 interface Holiday {
@@ -60,7 +79,7 @@ export default function Presenca() {
     const dateStr = format(d, 'yyyy-MM-dd');
     const { data } = await supabase
       .from('reservations')
-      .select('id, customer_name, customer_phone, num_pilots, attendance_status, time_slot:time_slots!inner(date, start_time)')
+      .select('id, customer_name, customer_phone, num_pilots, attendance_status, pilotos_completos, payment_method, time_slot:time_slots!inner(date, start_time)')
       .eq('status', 'paid')
       .eq('time_slot.date', dateStr);
 
@@ -72,8 +91,27 @@ export default function Presenca() {
         num_pilots: r.num_pilots,
         start_time: r.time_slot?.start_time ?? '',
         attendance_status: r.attendance_status,
+        pilotos_completos: r.pilotos_completos,
+        pilotosCadastrados: 0,
+        payment_method: r.payment_method,
       }))
       .sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+    // Conta quantos pilotos extras já foram cadastrados, só pras reservas de grupo.
+    const groupIds = rows.filter((r) => r.num_pilots > 1).map((r) => r.id);
+    if (groupIds.length > 0) {
+      const { data: pilotsData } = await supabase
+        .from('reservation_pilots')
+        .select('reservation_id')
+        .in('reservation_id', groupIds);
+      const countByReservation = new Map<string, number>();
+      (pilotsData || []).forEach((p: any) => {
+        countByReservation.set(p.reservation_id, (countByReservation.get(p.reservation_id) || 0) + 1);
+      });
+      rows.forEach((r) => {
+        r.pilotosCadastrados = countByReservation.get(r.id) || 0;
+      });
+    }
 
     setEntries(rows);
     setLoading(false);
@@ -258,9 +296,23 @@ export default function Presenca() {
                     <span className="font-racing font-bold text-lg w-14">{entry.start_time.slice(0, 5)}</span>
                     <div>
                       <p className="font-medium leading-tight">{entry.customer_name}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-3">
+                      <p className="text-xs text-muted-foreground flex items-center gap-3 flex-wrap">
                         <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{entry.customer_phone}</span>
                         <span className="flex items-center gap-1"><Users className="w-3 h-3" />{entry.num_pilots}</span>
+                        <span className="flex items-center gap-1"><CreditCard className="w-3 h-3" />{paymentLabel(entry.payment_method)}</span>
+                        {entry.num_pilots > 1 && (
+                          <span
+                            className={cn(
+                              'text-[10px] px-1.5 py-0.5 rounded-full border font-medium',
+                              entry.pilotos_completos
+                                ? 'border-racing-green text-racing-green'
+                                : 'border-secondary text-secondary',
+                            )}
+                          >
+                            Pilotos: {entry.pilotosCadastrados}/{entry.num_pilots - 1}
+                            {entry.pilotos_completos ? ' ✓' : ''}
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>

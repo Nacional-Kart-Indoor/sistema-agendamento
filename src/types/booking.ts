@@ -39,6 +39,9 @@ export interface Reservation {
   payment_id: string | null;
   reservation_code?: string | null;
   checkout_url?: string | null;
+  customer_cpf?: string | null;
+  pilotos_token?: string | null;
+  pilotos_completos?: boolean;
   created_at: string;
   updated_at: string;
   time_slot?: TimeSlot;

@@ -211,6 +211,7 @@ serve(async (req) => {
         asaas_customer_id: customerId,
         checkout_url: payment.invoiceUrl,
         checkout_url_expires_at: endOfDayISO(payment.dueDate || dueDate),
+        customer_cpf: cpf_cnpj,
       })
       .eq("id", reservation_id);
 

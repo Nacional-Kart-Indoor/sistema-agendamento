@@ -17,6 +17,9 @@ const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL");
 const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY");
 const EVOLUTION_INSTANCE = Deno.env.get("EVOLUTION_INSTANCE");
 
+const PUBLIC_SITE_URL =
+  Deno.env.get("PUBLIC_SITE_URL")?.replace(/\/+$/, "") || "https://nacionalkartindoor.com.br";
+
 // ─── Logger ───────────────────────────────────────────────────────────────────
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : "";
@@ -31,6 +34,15 @@ function generateReservationCode(): string {
     code += chars[Math.floor(Math.random() * chars.length)];
   }
   return code;
+}
+
+// ─── Token aleatório (256 bits) pra página pública de dados dos pilotos ──────
+// Diferente do reservation_code (curto, pra mostrar na tela): esse precisa
+// ser inadivinhável, então usa o gerador criptográfico, não Math.random().
+function generatePilotsToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function formatDate(dateStr: string): string {
@@ -218,8 +230,12 @@ async function sendWhatsApp(reservation: any, slot: any, reservationCode: string
     `⚠️ Antes de vir:`,
     `👟 Sapato fechado obrigatório`,
     `🪪 Documento com foto obrigatório`,
-    `📏 Altura mínima de 1,50m`,
+    `📏 Idade mínima de 12 anos e altura mínima de 1,50m`,
+    `⏰ Chegue com 20 minutos de antecedência`,
     `👨‍👩‍👧 Menor de idade? Um responsável precisa estar presente pra assinar o termo.`,
+    ...(numPilots > 1 && reservation.pilotos_token
+      ? [``, `👥 Falta completar os dados dos outros pilotos: ${PUBLIC_SITE_URL}/reserva/${reservation.pilotos_token}/pilotos`]
+      : []),
     ``,
     `Te esperamos! 🏁`,
   ].join("\n");
@@ -268,6 +284,7 @@ async function runPostPaymentEffects(
       num_pilots,
       valor_total,
       reservation_code,
+      pilotos_token,
       time_slots (
         date,
         start_time
@@ -350,7 +367,7 @@ serve(async (req) => {
 
     const { data: reservation, error: fetchError } = await supabase
       .from("reservations")
-      .select("id, status, reservation_code")
+      .select("id, status, reservation_code, num_pilots, pilotos_token")
       .eq("id", reservationId)
       .single();
 
@@ -374,6 +391,11 @@ serve(async (req) => {
       }
 
       const reservationCode = reservation.reservation_code || generateReservationCode();
+      // Só gera quando há pilotos extras a cadastrar (num_pilots > 1) e ainda
+      // não existe um token (idempotência do webhook: retry não troca o link
+      // que já pode ter sido mandado por WhatsApp).
+      const pilotsToken =
+        reservation.num_pilots > 1 ? reservation.pilotos_token || generatePilotsToken() : null;
 
       const { error: updateError } = await supabase
         .from("reservations")
@@ -387,6 +409,7 @@ serve(async (req) => {
           // sem tentar diferenciar. Não ramificar por essa distinção em nenhum lugar.
           payment_method: payment.billingType || "asaas",
           reservation_code: reservationCode,
+          ...(pilotsToken ? { pilotos_token: pilotsToken } : {}),
         })
         .eq("id", reservationId);
 

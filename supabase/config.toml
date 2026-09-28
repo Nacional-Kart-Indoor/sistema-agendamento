@@ -8,3 +8,9 @@ verify_jwt = false
 
 [functions.verify-asaas-payment]
 verify_jwt = false
+
+[functions.get-reservation-pilots]
+verify_jwt = false
+
+[functions.submit-reservation-pilots]
+verify_jwt = false

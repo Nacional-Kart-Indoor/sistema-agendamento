@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Reservation } from '@/types/booking';
-import { CheckCircle, Calendar, Clock, MapPin, Users, Zap, Mail, Phone, Home, Loader2 } from 'lucide-react';
+import { CheckCircle, Calendar, Clock, MapPin, Users, Zap, Mail, Phone, Home, Loader2, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ConfirmationStepProps {
@@ -186,6 +186,31 @@ export function ConfirmationStep({ reservation, onReset }: ConfirmationStepProps
         </div>
       </Card>
 
+      {isPaid && reservation.num_pilots > 1 && reservation.pilotos_token && (
+        <Card className="p-5 mt-6 border-secondary/40 bg-secondary/5">
+          <div className="flex items-start gap-3">
+            <UserPlus className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold text-sm mb-1">
+                {reservation.pilotos_completos ? 'Dados dos pilotos completos ✅' : 'Falta cadastrar os outros pilotos'}
+              </p>
+              <p className="text-xs text-muted-foreground mb-3">
+                {reservation.pilotos_completos
+                  ? 'Nome e CPF dos pilotos extras já foram enviados.'
+                  : `Precisamos do nome e CPF dos outros ${reservation.num_pilots - 1} piloto(s) — esse link também foi enviado por WhatsApp.`}
+              </p>
+              {!reservation.pilotos_completos && (
+                <Button variant="secondary" size="sm" asChild>
+                  <a href={`/reserva/${reservation.pilotos_token}/pilotos`}>
+                    Cadastrar pilotos
+                  </a>
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
       <div className="flex flex-col gap-3 mt-8">
         <Button variant="outline" size="lg" onClick={onReset} className="w-full">
           <Home className="w-5 h-5 mr-2" />
@@ -194,7 +219,7 @@ export function ConfirmationStep({ reservation, onReset }: ConfirmationStepProps
       </div>
 
       <p className="text-xs text-muted-foreground text-center mt-6">
-        Chegue com 15 minutos de antecedência para o briefing de segurança.
+        Chegue com 20 minutos de antecedência para o briefing de segurança.
         <br />
         Em caso de dúvidas, entre em contato: (62) 99287-6718
       </p>

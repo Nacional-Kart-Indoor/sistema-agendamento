@@ -16,7 +16,7 @@ interface CustomerStepProps {
 }
 
 // ─── Validação de CPF / CNPJ (dígitos verificadores) ──────────────────────────
-function isValidCpf(value: string): boolean {
+export function isValidCpf(value: string): boolean {
   const cpf = value.replace(/\D/g, '');
   if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
 
@@ -83,6 +83,8 @@ export function CustomerStep({ bookingData, onUpdate, onNext, onBack }: Customer
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [ackMinor, setAckMinor] = useState(false);
   const [ackHeight, setAckHeight] = useState(false);
+  const [ackDocument, setAckDocument] = useState(false);
+  const [ackArrival, setAckArrival] = useState(false);
   const [ackError, setAckError] = useState(false);
 
   const validate = () => {
@@ -111,7 +113,7 @@ export function CustomerStep({ bookingData, onUpdate, onNext, onBack }: Customer
 
   const handleNext = () => {
     const dataOk = validate();
-    const ackOk = ackMinor && ackHeight;
+    const ackOk = ackMinor && ackHeight && ackDocument && ackArrival;
     setAckError(!ackOk);
     if (dataOk && ackOk) {
       onNext();
@@ -239,8 +241,9 @@ export function CustomerStep({ bookingData, onUpdate, onNext, onBack }: Customer
             className="mt-0.5"
           />
           <Label htmlFor="ack-height" className="text-sm font-normal leading-snug cursor-pointer">
-            Estou ciente de que a Pista Adulto exige <strong>altura mínima de 1,50m</strong>. Reservas
-            feitas para pilotos abaixo dessa altura não garantem participação.
+            Estou ciente de que a Pista Adulto exige <strong>idade mínima de 12 anos</strong> e{' '}
+            <strong>altura mínima de 1,50m</strong>. Reservas feitas para pilotos que não atendam a
+            esses requisitos não garantem participação.
           </Label>
         </div>
         <div className="flex items-start gap-3">
@@ -255,9 +258,33 @@ export function CustomerStep({ bookingData, onUpdate, onNext, onBack }: Customer
             responsável deve estar presente para assinar o termo de responsabilidade no local.
           </Label>
         </div>
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="ack-document"
+            checked={ackDocument}
+            onCheckedChange={(v) => setAckDocument(v === true)}
+            className="mt-0.5"
+          />
+          <Label htmlFor="ack-document" className="text-sm font-normal leading-snug cursor-pointer">
+            Estou ciente de que todos os pilotos devem <strong>apresentar documento com foto</strong> no
+            dia da corrida.
+          </Label>
+        </div>
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="ack-arrival"
+            checked={ackArrival}
+            onCheckedChange={(v) => setAckArrival(v === true)}
+            className="mt-0.5"
+          />
+          <Label htmlFor="ack-arrival" className="text-sm font-normal leading-snug cursor-pointer">
+            Estou ciente de que devo <strong>chegar com 20 minutos de antecedência</strong> do horário
+            reservado.
+          </Label>
+        </div>
         {ackError && (
           <p className="text-destructive text-sm">
-            Marque as duas opções acima para continuar.
+            Marque todas as opções acima para continuar.
           </p>
         )}
       </Card>

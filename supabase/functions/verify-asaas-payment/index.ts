@@ -116,8 +116,10 @@ serve(async (req) => {
         trackName = track?.name ?? "";
       }
 
+      // A resposta vai pro navegador — não devolve o CPF do cliente.
+      const { customer_cpf: _cpf, ...publicReservation } = reservation ?? {};
       const fullReservation = {
-        ...reservation,
+        ...publicReservation,
         time_slots: timeSlot
           ? {
               date: timeSlot.date,
