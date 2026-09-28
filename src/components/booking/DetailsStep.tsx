@@ -95,7 +95,28 @@ export function DetailsStep({
               onValueChange={handleTrackSelect}
               className="space-y-3"
             >
-              {tracks.map((track) => (
+              {tracks.map((track) => isKidsTrack(track.name) ? (
+                // Pista Kids não tem agendamento online (nem horários — ver
+                // fetchTimeSlots em useBooking): card só informativo, sem seleção.
+                <div key={track.id} className="p-4 rounded-lg border-2 border-dashed border-border bg-muted/20">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold">{track.name}</p>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full border border-secondary text-secondary font-medium whitespace-nowrap">
+                      Só no local
+                    </span>
+                  </div>
+                  <ul className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                    <li>📏 Crianças de 1,25m a 1,50m</li>
+                    <li>🕒 10 min de corrida</li>
+                    <li>👦 1 criança por vez, com total segurança</li>
+                    <li className="text-secondary font-medium">📌 Sem agendamento: por ordem de chegada</li>
+                  </ul>
+                  <p className="text-sm mt-1">
+                    <span className="text-primary font-semibold">R$ {track.price_per_pilot.toFixed(2)}</span>
+                    <span className="text-muted-foreground"> (com blusa + balaclava)</span>
+                  </p>
+                </div>
+              ) : (
                 <label
                   key={track.id}
                   className={cn(
@@ -108,21 +129,10 @@ export function DetailsStep({
                   <RadioGroupItem value={track.id} className="sr-only" />
                   <div className="flex-1">
                     <p className="font-semibold">{track.name}</p>
-                    {isKidsTrack(track.name) ? (
-                      <ul className="text-sm text-muted-foreground mt-1 space-y-0.5">
-                        <li>📏 Crianças de 1,25m a 1,50m</li>
-                        <li>🕒 10 min de corrida</li>
-                        <li>👦 1 criança por vez, com total segurança</li>
-                        <li className="text-secondary font-medium">📌 Sem agendamento: por ordem de chegada</li>
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">{track.description}</p>
-                    )}
+                    <p className="text-sm text-muted-foreground">{track.description}</p>
                     <p className="text-sm mt-1">
                       <span className="text-primary font-semibold">R$ {track.price_per_pilot.toFixed(2)}</span>
-                      <span className="text-muted-foreground">
-                        {isKidsTrack(track.name) ? ' (com blusa + balaclava)' : ' / piloto'}
-                      </span>
+                      <span className="text-muted-foreground"> / piloto</span>
                     </p>
                   </div>
                   <div className={cn(
