@@ -51,7 +51,7 @@ export default function Index() {
 
   // Purchase (browser). Dispara uma única vez por reserva (sessionStorage, então
   // sobrevive a reload). O mesmo event_id sai pela Conversions API no
-  // stripe-webhook, e o Meta deduplica os dois envios.
+  // asaas-webhook, e o Meta deduplica os dois envios.
   const trackPurchase = (res: Reservation) => {
     if (!res?.id || res.status !== 'paid') return;
     trackOnce(`nki_purchase_${res.id}`, () => {

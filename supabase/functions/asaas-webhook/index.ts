@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { isSandbox, mapAsaasEventToReservation } from "../_shared/asaas.ts";
+import { sendMetaCapiEvent, splitName } from "../_shared/meta-capi.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -268,20 +269,72 @@ async function sendWhatsApp(reservation: any, slot: any, reservationCode: string
   }
 }
 
-// ─── Efeitos pós-pagamento (código de reserva + SellFlux + WhatsApp) ─────────
+// ─── Meta CAPI: Purchase server-side ──────────────────────────────────────────
+// event_id = `purchase-<reservation_id>`, o mesmo que o navegador envia no
+// Purchase do pixel quando a pessoa volta da Asaas — o Meta deduplica e conta
+// uma venda só. Quem pagou e fechou a aba sem voltar só é contabilizado por
+// aqui. Nunca lança: falha no Meta não pode derrubar o webhook.
+async function sendMetaPurchase(supabase: any, reservation: any): Promise<void> {
+  try {
+    const { firstName, lastName } = splitName(reservation.customer_name);
+
+    const value = Number(reservation.valor_total) || 0;
+    const numPilots = Number(reservation.num_pilots) || 1;
+    const contentId = `bateria-${reservation.battery_type === "kids" ? "kids" : "individual"}`;
+
+    const result = await sendMetaCapiEvent({
+      eventName: "Purchase",
+      eventId: `purchase-${reservation.id}`,
+      eventSourceUrl: reservation.event_source_url || `${PUBLIC_SITE_URL}/`,
+      user: {
+        email: reservation.customer_email,
+        phone: reservation.customer_phone,
+        firstName,
+        lastName,
+        externalId: reservation.external_id,
+        fbp: reservation.fbp,
+        fbc: reservation.fbc,
+        clientIp: reservation.client_ip_address,
+        userAgent: reservation.client_user_agent,
+      },
+      customData: {
+        value: Number(value.toFixed(2)),
+        currency: "BRL",
+        content_type: "product",
+        content_ids: [contentId],
+        content_name: `Bateria ${reservation.battery_type === "kids" ? "Kids" : "Individual"}`,
+        content_category: "Agendamento de Kart",
+        contents: [{ id: contentId, quantity: numPilots, item_price: Number((value / numPilots).toFixed(2)) }],
+        num_items: numPilots,
+        order_id: reservation.id,
+      },
+    });
+
+    if (!result.ok) return;
+
+    const { error } = await supabase
+      .from("reservations")
+      .update({ meta_purchase_sent_at: new Date().toISOString() })
+      .eq("id", reservation.id);
+    if (error) logStep("meta_purchase_sent_at não gravado (ignorado)", { error: error.message });
+  } catch (err) {
+    logStep("Purchase para o Meta falhou (ignorado)", { err: String(err) });
+  }
+}
+
+// ─── Efeitos pós-pagamento (código de reserva + SellFlux + WhatsApp + Meta) ──
 async function runPostPaymentEffects(
   supabase: any,
   reservationId: string,
   reservationCode: string,
 ) {
-  const { data: fullReservation, error: fullFetchError } = await supabase
-    .from("reservations")
-    .select(`
+  const BASE_FIELDS = `
       id,
       customer_name,
       customer_email,
       customer_phone,
       num_pilots,
+      battery_type,
       valor_total,
       reservation_code,
       pilotos_token,
@@ -289,25 +342,52 @@ async function runPostPaymentEffects(
         date,
         start_time
       )
-    `)
+    `;
+  // Só existem depois da migration 20260820120000_meta_tracking_fields.
+  const TRACKING_FIELDS = `
+      fbp,
+      fbc,
+      external_id,
+      client_user_agent,
+      client_ip_address,
+      event_source_url,
+    `;
+
+  let { data: fullReservation, error: fullFetchError } = await supabase
+    .from("reservations")
+    .select(TRACKING_FIELDS + BASE_FIELDS)
     .eq("id", reservationId)
     .single();
+
+  // Se a migration de rastreamento ainda não rodou, o resto do fluxo (SellFlux,
+  // WhatsApp) não pode parar por causa disso — refaz a busca sem esses campos.
+  if (fullFetchError) {
+    logStep("Busca com campos de rastreamento falhou, tentando sem eles", { error: fullFetchError.message });
+    ({ data: fullReservation, error: fullFetchError } = await supabase
+      .from("reservations")
+      .select(BASE_FIELDS)
+      .eq("id", reservationId)
+      .single());
+  }
 
   if (fullFetchError || !fullReservation) {
     logStep("Erro ao buscar reserva completa", { fullFetchError });
     return;
   }
 
+  if (isSandbox()) {
+    logStep("SANDBOX_MODE — SellFlux, WhatsApp e Meta pulados", { reservationId, reservationCode });
+    return;
+  }
+
+  // Purchase no Meta: a venda já é real aqui, independe de ter time_slot vinculado.
+  await sendMetaPurchase(supabase, fullReservation);
+
   const slot = fullReservation.time_slots as any;
   if (!slot?.date || !slot?.start_time) {
     // Reserva sem slot vinculado (modo SellFlux sem match no Supabase). A reserva
     // já está paga; só não dá pra montar o agendamento/mensagem com data e hora.
     logStep("Reserva sem time_slot — SellFlux/WhatsApp pulados", { reservationId });
-    return;
-  }
-
-  if (isSandbox()) {
-    logStep("SANDBOX_MODE — SellFlux e WhatsApp pulados", { reservationId, reservationCode });
     return;
   }
 

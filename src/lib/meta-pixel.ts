@@ -5,10 +5,12 @@
  * VITE_META_PIXEL_ID sobrescreve; `VITE_META_PIXEL_ID=off` desliga o pixel
  * (útil em dev local para não poluir os dados) — aí todas as funções viram no-op.
  *
- * Rotas internas (/admin, /atendente) nunca carregam nem disparam o pixel,
- * para as atendentes não poluírem público nem conversão.
+ * Rotas internas (/admin, /atendente) e a página pós-compra de cadastro de
+ * pilotos (/reserva/:token/pilotos) nunca carregam nem disparam o pixel: as
+ * atendentes não poluem público nem conversão, e o cadastro de pilotos é
+ * tráfego de link de WhatsApp, não de aquisição.
  *
- * O Purchase também é enviado pelo servidor (stripe-webhook, via Conversions
+ * O Purchase também é enviado pelo servidor (asaas-webhook, via Conversions
  * API) com o mesmo event_id, para o Meta deduplicar. Os cookies _fbp/_fbc, um
  * external_id anônimo e a URL de origem viajam junto com a reserva
  * (getTrackingPayload) para sustentar o match no envio server-side.
@@ -18,7 +20,7 @@
  *   ViewContent       -> selecionou um horário
  *   AddToCart         -> "Continuar" em Configure sua Bateria (com valor)
  *   InitiateCheckout  -> dados do cliente válidos (com valor + advanced matching)
- *   AddPaymentInfo    -> reserva criada, indo para o Stripe
+ *   AddPaymentInfo    -> reserva criada, indo para a Asaas
  *   Purchase          -> pagamento confirmado (navegador + CAPI)
  */
 
@@ -61,7 +63,7 @@ export interface MetaEventParams {
   [key: string]: unknown;
 }
 
-const INTERNAL_ROUTES = ['/admin', '/atendente'];
+const INTERNAL_ROUTES = ['/admin', '/atendente', '/reserva'];
 const EXTERNAL_ID_KEY = 'nki_external_id';
 
 let initialized = false;
@@ -70,7 +72,7 @@ export function isMetaPixelEnabled(): boolean {
   return !!META_PIXEL_ID;
 }
 
-/** Rotas internas (painel das atendentes e admin) não geram evento. */
+/** Rotas sem valor de aquisição (painel interno e cadastro de pilotos) não geram evento. */
 export function isInternalRoute(pathname?: string): boolean {
   const path = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
   return INTERNAL_ROUTES.some((route) => path.startsWith(route));

@@ -17,15 +17,17 @@ e `supabase/functions/_shared/meta-capi.ts`. `VITE_META_PIXEL_ID` (frontend) e
 | Selecionou um horário em "Configure sua Bateria" | `ViewContent` | `src/pages/Index.tsx` (effect no `timeSlot`) | value, content_ids |
 | Clicou "Continuar" em "Configure sua Bateria" | `AddToCart` | `src/pages/Index.tsx` | value, contents, num_items |
 | Dados do cliente válidos → "Resumo e Pagamento" | `InitiateCheckout` | `src/pages/Index.tsx` | value + advanced matching (`identify`) |
-| Clicou "Pagar com Stripe" (reserva criada) | `AddPaymentInfo` | `src/hooks/useBooking.ts`, antes do redirect | value, order_id |
-| Pagamento aprovado no Stripe | `Purchase` | navegador (`src/pages/Index.tsx`) + Conversions API (`supabase/functions/stripe-webhook`) | value = `valor_total`, order_id |
-| Voltou do Stripe cancelado | `CheckoutCancelled` (custom) | `src/pages/Index.tsx` | reservation_id |
+| Clicou "Pagar" (reserva criada) | `AddPaymentInfo` | `src/hooks/useBooking.ts`, antes do redirect | value, order_id |
+| Pagamento aprovado na Asaas | `Purchase` | navegador (`src/pages/Index.tsx`) + Conversions API (`supabase/functions/asaas-webhook`) | value = `valor_total`, order_id |
+| Voltou do pagamento cancelado | `CheckoutCancelled` (custom) | `src/pages/Index.tsx` | reservation_id |
 
 Os parâmetros são montados em `src/lib/meta-booking.ts`, para que todos os eventos
 (navegador e servidor) usem o mesmo `content_id` e o mesmo valor.
 
-O painel interno (`/admin` e `/atendente`) não carrega o pixel — as atendentes não
-poluem público nem conversão (`isInternalRoute` em `src/lib/meta-pixel.ts`).
+O painel interno (`/admin`, `/atendente`) e a página pós-compra de cadastro de
+pilotos (`/reserva/:token/pilotos`) não carregam o pixel: as atendentes não poluem
+público nem conversão, e o cadastro de pilotos é tráfego de link de WhatsApp, não
+de aquisição (`isInternalRoute` em `src/lib/meta-pixel.ts`).
 
 ## content_ids
 
@@ -35,15 +37,17 @@ recriadas no banco. `content_category` é sempre `Agendamento de Kart`.
 
 ## Purchase: navegador + servidor, sem contar em dobro
 
-O pagamento é feito fora do site (Stripe Checkout), então o pixel não existe na tela
-de pagamento. O `Purchase` sai de dois lugares:
+O pagamento é feito fora do site (página hospedada da Asaas), então o pixel não existe
+na tela de pagamento. O `Purchase` sai de dois lugares:
 
-1. **Navegador** — quando a pessoa volta do Stripe para `/?payment=success&...` e a
-   reserva é confirmada como `paid`. Guardado por `sessionStorage` (`trackOnce`), então
-   um reload não dispara de novo.
-2. **Conversions API** — no `stripe-webhook`, quando o `checkout.session.completed`
-   chega. Esse caminho pega inclusive quem pagou e fechou a aba sem voltar ao site.
-   Quando o envio dá certo, `reservations.meta_purchase_sent_at` é preenchido.
+1. **Navegador** — quando a pessoa volta da Asaas para `/?payment=success&reservation_id=...`
+   e a reserva é confirmada como `paid`. Guardado por `sessionStorage` (`trackOnce`),
+   então um reload não dispara de novo.
+2. **Conversions API** — no `asaas-webhook`, dentro de `runPostPaymentEffects`, quando
+   o evento `PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED` chega. Esse caminho pega inclusive
+   quem pagou e fechou a aba sem voltar ao site, e não depende de a reserva ter
+   `time_slot` vinculado. Quando o envio dá certo, `reservations.meta_purchase_sent_at`
+   é preenchido. Em `SANDBOX_MODE` o envio é pulado junto com SellFlux e WhatsApp.
 
 Os dois usam o mesmo `event_id`: `purchase-<reservation_id>`. O Meta deduplica e conta
 uma venda só.
@@ -55,7 +59,7 @@ uma venda só.
   `InitiateCheckout` e do `Purchase`. O hash é feito pelo próprio pixel.
 - **Servidor:** o `create-reservation` grava na reserva os cookies `_fbp`/`_fbc`, o
   `external_id` (UUID anônimo no `localStorage`), a URL de origem, IP e user agent.
-  O `stripe-webhook` manda tudo isso na CAPI (`_shared/meta-capi.ts`), com e-mail,
+  O `asaas-webhook` manda tudo isso na CAPI (`_shared/meta-capi.ts`), com e-mail,
   telefone e nome em SHA-256. É isso que sustenta o match quando o navegador bloqueia
   o pixel.
 
@@ -76,8 +80,7 @@ O mesmo `external_id` viaja pelos dois lados para ligar as pontas.
    - `META_PIXEL_ID` — opcional, o código já usa 28257199233881770 como padrão.
    - `META_CAPI_TEST_EVENT_CODE` — opcional, só durante o teste em "Testar eventos".
    - `SITE_URL` — opcional, fallback do `event_source_url`.
-4. **Deploy** das functions alteradas: `create-reservation`, `create-checkout`,
-   `verify-checkout-session`, `stripe-webhook`.
+4. **Deploy** das functions alteradas: `create-reservation` e `asaas-webhook`.
 5. **Domínio verificado** no Gerenciador de Negócios e priorização de eventos na
    Mensuração Agregada (Purchase em primeiro lugar).
 
@@ -86,8 +89,10 @@ O mesmo `external_id` viaja pelos dois lados para ligar as pontas.
 - **Navegador:** extensão Meta Pixel Helper no site + "Testar eventos" no Gerenciador
   de Eventos. Percorrer o funil: PageView → escolher data → escolher horário
   (ViewContent) → Continuar (AddToCart) → preencher dados (InitiateCheckout com o
-  valor da tela) → Pagar com Stripe (AddPaymentInfo).
-- **Purchase:** fazer uma reserva com o Stripe em modo teste. Conferir no Gerenciador de
+  valor da tela) → Pagar (AddPaymentInfo).
+- **Purchase:** fazer uma reserva com a Asaas em sandbox. Conferir no Gerenciador de
   Eventos se aparece **um** Purchase com origem "Navegador e servidor" (deduplicado).
-- **Servidor:** logs da função `stripe-webhook` no Supabase, linha
+  Atenção: com `SANDBOX_MODE` ligado o envio pela CAPI é pulado — para testar a
+  deduplicação, desligue o sandbox e use `META_CAPI_TEST_EVENT_CODE`.
+- **Servidor:** logs da função `asaas-webhook` no Supabase, linha
   `[META-CAPI] Event sent`.

@@ -1,7 +1,7 @@
 // supabase/functions/_shared/meta-capi.ts
 //
 // Envia eventos para o Meta via Conversions API (server-side).
-// Usado pelo stripe-webhook para o evento Purchase — a fonte de verdade do
+// Usado pelo asaas-webhook para o evento Purchase — a fonte de verdade do
 // pagamento é o webhook, então esse envio acontece mesmo que o cliente feche
 // a aba antes de voltar ao site ou tenha bloqueador de anúncios.
 //
@@ -13,7 +13,7 @@
 //   META_CAPI_TEST_EVENT_CODE
 //   SITE_URL — fallback do event_source_url quando a reserva não gravou um
 //
-// Nunca lança exceção — o webhook do Stripe não pode falhar por causa do Meta.
+// Nunca lança exceção — o webhook da Asaas não pode falhar por causa do Meta.
 
 const GRAPH_API_VERSION = "v21.0";
 const DEFAULT_PIXEL_ID = "28257199233881770";
