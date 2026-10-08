@@ -70,36 +70,35 @@ serve(async (req) => {
       const { date, time } = parsed;
       const startTime = `${time}:00`;
 
-      // Busca slot real no Supabase pela data e hora
-      const { data: slot } = await supabase
-        .from("time_slots")
-        .select("id, track:tracks(price_per_pilot, price_kids)")
-        .eq("date", date)
-        .eq("start_time", startTime)
+      // Agendamento online é só no Kartódromo Principal — a Pista Kids é por ordem
+      // de chegada. Os horários das duas pistas têm a mesma data e hora, então a
+      // busca precisa filtrar pela pista (antes pegava qualquer uma das duas).
+      const { data: mainTrack } = await supabase
+        .from("tracks")
+        .select("id, price_per_pilot, price_kids")
+        .eq("is_active", true)
+        .not("name", "ilike", "%kids%")
         .limit(1)
         .single();
 
-      if (slot) {
-        realTimeSlotId = slot.id;
-        const track = slot.track as any;
-        const pricePerPilot = battery_type === "kids" ? Number(track?.price_kids) : Number(track?.price_per_pilot);
-        valor_total = pricePerPilot * pilots;
-        logStep("Slot Supabase encontrado", { realTimeSlotId, valor_total });
-      } else {
-        // Slot não existe no Supabase — calcula preço pela pista principal
-        const { data: track } = await supabase
-          .from("tracks")
-          .select("price_per_pilot, price_kids")
-          .eq("is_active", true)
-          .not("name", "ilike", "%kids%")
-          .limit(1)
-          .single();
-
-        const pricePerPilot = battery_type === "kids" ? Number(track?.price_kids || 8000) : Number(track?.price_per_pilot || 10000);
-        valor_total = pricePerPilot * pilots;
-        realTimeSlotId = null;
-        logStep("Slot Supabase não encontrado, reserva sem slot", { valor_total });
+      if (!mainTrack) {
+        logStep("ERRO: pista principal ativa não encontrada");
+        return new Response(JSON.stringify({ error: "Erro ao calcular o valor da reserva" }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 });
       }
+
+      const pricePerPilot = battery_type === "kids" ? Number(mainTrack.price_kids) : Number(mainTrack.price_per_pilot);
+      valor_total = pricePerPilot * pilots;
+
+      const { data: slot } = await supabase
+        .from("time_slots")
+        .select("id")
+        .eq("track_id", mainTrack.id)
+        .eq("date", date)
+        .eq("start_time", startTime)
+        .maybeSingle();
+
+      realTimeSlotId = slot?.id ?? null;
+      logStep(slot ? "Slot da pista principal encontrado" : "Slot não encontrado no Supabase, reserva sem slot", { realTimeSlotId, valor_total });
 
     } else {
       // Fluxo original UUID Supabase
@@ -126,11 +125,14 @@ serve(async (req) => {
 
       const { data: slotWithTrack } = await supabase
         .from("time_slots")
-        .select("track:tracks(price_per_pilot, price_kids)")
+        .select("track:tracks(name, price_per_pilot, price_kids)")
         .eq("id", time_slot_id)
         .single();
 
       const track = (slotWithTrack?.track) as any;
+      if (/kids/i.test(track?.name ?? "")) {
+        return new Response(JSON.stringify({ error: "A Pista Kids não tem agendamento online — é por ordem de chegada" }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 409 });
+      }
       const pricePerPilot = battery_type === "kids" ? Number(track?.price_kids) : Number(track?.price_per_pilot);
       valor_total = pricePerPilot * pilots;
       realTimeSlotId = time_slot_id;
