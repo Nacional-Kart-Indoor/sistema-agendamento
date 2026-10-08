@@ -9,6 +9,8 @@ import { ConfirmationStep } from '@/components/booking/ConfirmationStep';
 import { StepIndicator } from '@/components/booking/StepIndicator';
 import { supabase } from '@/integrations/supabase/client';
 import { Reservation } from '@/types/booking';
+import { identify, trackMetaEvent, trackMetaCustomEvent, trackOnce } from '@/lib/meta-pixel';
+import { bookingEventParams, purchaseEventId, reservationPurchaseParams } from '@/lib/meta-booking';
 
 // Corrige nome da pista com segurança total
 function fixTrackName(res: any): any {
@@ -47,6 +49,17 @@ export default function Index() {
 
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'success' | 'cancelled' | 'loading'>('idle');
 
+  // Purchase (browser). Dispara uma única vez por reserva (sessionStorage, então
+  // sobrevive a reload). O mesmo event_id sai pela Conversions API no
+  // asaas-webhook, e o Meta deduplica os dois envios.
+  const trackPurchase = (res: Reservation) => {
+    if (!res?.id || res.status !== 'paid') return;
+    trackOnce(`nki_purchase_${res.id}`, () => {
+      identify({ email: res.customer_email, phone: res.customer_phone, name: res.customer_name });
+      trackMetaEvent('Purchase', reservationPurchaseParams(res), purchaseEventId(res.id));
+    });
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payment = params.get('payment');
@@ -59,6 +72,7 @@ export default function Index() {
     } else if (payment === 'cancelled') {
       setPaymentStatus('cancelled');
       window.history.replaceState({}, '', '/');
+      trackMetaCustomEvent('CheckoutCancelled', { reservation_id: reservationId ?? undefined });
     }
   }, []);
 
@@ -73,6 +87,7 @@ export default function Index() {
         setReservationFromPayment(res as Reservation);
         setPaymentStatus('success');
         goToStep('confirmation');
+        trackPurchase(res as Reservation);
         return;
       }
 
@@ -101,6 +116,7 @@ export default function Index() {
       setReservationFromPayment(res as unknown as Reservation);
       setPaymentStatus('success');
       goToStep('confirmation');
+      trackPurchase(res as unknown as Reservation);
     } catch (err) {
       console.error('Erro ao buscar reserva:', err);
       setPaymentStatus('cancelled');
@@ -118,6 +134,16 @@ export default function Index() {
   }, [bookingData.date, bookingData.track, fetchTimeSlots]);
 
   const total = calculateTotal(bookingData.track, bookingData.numPilots, bookingData.batteryType);
+
+  // ViewContent: cliente selecionou um horário (equivale à página de produto).
+  useEffect(() => {
+    if (bookingData.timeSlot && bookingData.track) {
+      trackMetaEvent('ViewContent', bookingEventParams(bookingData, total));
+    }
+    // Dispara apenas quando o horário muda, não a cada alteração de pilotos/bateria.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingData.timeSlot?.id]);
+
   const steps = ['date', 'details', 'customer', 'payment', 'confirmation'];
   const currentStepIndex = steps.indexOf(step);
 
@@ -157,7 +183,10 @@ export default function Index() {
               calculateTotal={calculateTotal}
               checkCapacity={checkCapacity}
               onBack={() => goToStep('date')}
-              onNext={() => goToStep('customer')}
+              onNext={() => {
+                trackMetaEvent('AddToCart', bookingEventParams(bookingData, total));
+                goToStep('customer');
+              }}
             />
           )}
           {step === 'customer' && (
@@ -165,7 +194,15 @@ export default function Index() {
               bookingData={bookingData}
               onUpdate={updateBookingData}
               onBack={() => goToStep('details')}
-              onNext={() => goToStep('payment')}
+              onNext={() => {
+                identify({
+                  email: bookingData.customerEmail,
+                  phone: bookingData.customerPhone,
+                  name: bookingData.customerName,
+                });
+                trackMetaEvent('InitiateCheckout', bookingEventParams(bookingData, total));
+                goToStep('payment');
+              }}
             />
           )}
           {step === 'payment' && (

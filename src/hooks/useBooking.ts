@@ -4,6 +4,8 @@ import { BookingData, BookingStep, Track, TimeSlot, BatteryType, Reservation } f
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { getTrackingPayload, trackMetaEvent } from '@/lib/meta-pixel';
+import { bookingEventParams } from '@/lib/meta-booking';
 
 const initialBookingData: BookingData = {
   date: null,
@@ -164,6 +166,8 @@ export function useBooking() {
             customer_phone: customerPhone,
             num_pilots: numPilots,
             battery_type: batteryType,
+            // cookies do Meta + external_id: usados no Purchase via Conversions API
+            tracking: getTrackingPayload(),
           },
         });
 
@@ -177,6 +181,13 @@ export function useBooking() {
 
       const createdReservation: Reservation = reservationData.reservation;
       setReservation(createdReservation);
+
+      // AddPaymentInfo: reserva criada, cliente está indo para o pagamento.
+      // Disparado antes do redirect para não ser perdido na troca de página.
+      trackMetaEvent('AddPaymentInfo', {
+        ...bookingEventParams(bookingData, calculateTotal(track, numPilots, batteryType)),
+        order_id: createdReservation.id,
+      });
 
       // Cria a cobrança na Asaas e obtém a URL da página de pagamento hospedada
       const dateStr = format(date, 'dd/MM/yyyy', { locale: ptBR });

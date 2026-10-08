@@ -9,6 +9,7 @@ import AtendenteLogin from "./pages/atendente/Login";
 import Presenca from "./pages/atendente/Presenca";
 import AdminDashboard from "./pages/admin/Dashboard";
 import ReservationPilots from "./pages/ReservationPilots";
+import { MetaPixelRouteTracker } from "@/components/MetaPixelRouteTracker";
 
 const queryClient = new QueryClient();
 
@@ -18,6 +19,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <MetaPixelRouteTracker />
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/atendente/login" element={<AtendenteLogin />} />
