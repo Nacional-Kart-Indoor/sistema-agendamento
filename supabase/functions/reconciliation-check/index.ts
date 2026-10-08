@@ -73,7 +73,7 @@ async function retryUnclaimedPostPayment(supabase: any): Promise<number> {
     .select('id')
     .eq('status', 'paid')
     .is('post_payment_claimed_at', null)
-    .lt('updated_at', cutoff);
+    .lt('paid_at', cutoff); // paid_at NULL (pagas antes da trava) fica de fora
   if (error) throw error;
 
   for (const r of unclaimed ?? []) {

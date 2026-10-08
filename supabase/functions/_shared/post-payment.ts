@@ -451,6 +451,9 @@ export async function runPostPaymentEffects(supabase: any, reservationId: string
       .update({ post_payment_claimed_at: new Date().toISOString() })
       .eq("id", reservationId)
       .eq("status", "paid")
+      // paid_at só existe em reservas pagas depois da trava existir: as antigas
+      // (já processadas pelo webhook antigo) nunca reexecutam.
+      .not("paid_at", "is", null)
       .is("post_payment_claimed_at", null)
       .select(RESERVATION_FIELDS);
 
@@ -460,7 +463,7 @@ export async function runPostPaymentEffects(supabase: any, reservationId: string
       return;
     }
     if (!claimed || claimed.length === 0) {
-      logStep("Efeitos pós-pagamento já executados por outro caminho — nada a fazer", { reservationId });
+      logStep("Efeitos pós-pagamento já executados (ou reserva paga antes da trava) — nada a fazer", { reservationId });
       return;
     }
 
