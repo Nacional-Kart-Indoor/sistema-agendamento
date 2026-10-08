@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { asaasFetch, isPaidStatus } from "../_shared/asaas.ts";
+import { markReservationPaid, runPostPaymentEffects } from "../_shared/post-payment.ts";
+
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -76,23 +79,14 @@ serve(async (req) => {
     }
 
     if (isPaidStatus(payment.status)) {
-      if (existing.status !== "paid") {
-        // Fallback: normalmente o webhook já marcou paid. reservation_code,
-        // SellFlux e WhatsApp continuam sendo responsabilidade do webhook —
-        // aqui só destravamos a tela de confirmação (coberto por reconciliation-check).
-        const { error: updateError } = await supabase
-          .from("reservations")
-          .update({ status: "paid", payment_id: payment.id })
-          .eq("id", reservation_id);
-
-        if (updateError) {
-          logStep("Error updating reservation", { error: updateError });
-          throw updateError;
-        }
-        logStep("Reservation updated to paid (fallback)", { reservation_id });
-      } else {
-        logStep("Already paid, skipping update", { reservation_id });
-      }
+      // Normalmente o webhook já marcou paid. Se o cliente voltou antes do
+      // webhook chegar, marca aqui (com código e token, igual ao webhook) e
+      // dispara os efeitos pós-pagamento em segundo plano, sem segurar a tela de
+      // confirmação. A trava em runPostPaymentEffects impede rodar duas vezes
+      // quando o webhook chegar depois.
+      const { transitioned } = await markReservationPaid(supabase, reservation_id, payment);
+      logStep(transitioned ? "Reservation updated to paid (antes do webhook)" : "Already paid", { reservation_id });
+      EdgeRuntime.waitUntil(runPostPaymentEffects(supabase, reservation_id));
 
       const { data: reservation } = await supabase
         .from("reservations")
