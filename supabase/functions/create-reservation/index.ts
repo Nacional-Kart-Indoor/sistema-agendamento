@@ -139,7 +139,10 @@ serve(async (req) => {
     // Dados de rastreamento do Meta (usados no Purchase via Conversions API)
     const forwardedFor = req.headers.get("x-forwarded-for") || "";
     const clientIp = forwardedFor.split(",")[0].trim() || null;
-    const userAgent = req.headers.get("user-agent") || null;
+    const userAgent = req.headers.get("user-agent")?.slice(0, 500) || null;
+    // Vem do navegador sem validação: aceita só string e limita o tamanho, pra um
+    // valor estranho não derrubar o insert da reserva.
+    const trackingField = (v: unknown) => (typeof v === "string" && v ? v.slice(0, 500) : null);
 
     // Cria a reserva
     const baseReservation = {
@@ -157,10 +160,10 @@ serve(async (req) => {
       .from("reservations")
       .insert({
         ...baseReservation,
-        fbp: tracking?.fbp ?? null,
-        fbc: tracking?.fbc ?? null,
-        external_id: tracking?.external_id ?? null,
-        event_source_url: tracking?.event_source_url ?? null,
+        fbp: trackingField(tracking?.fbp),
+        fbc: trackingField(tracking?.fbc),
+        external_id: trackingField(tracking?.external_id),
+        event_source_url: trackingField(tracking?.event_source_url),
         client_user_agent: userAgent,
         client_ip_address: clientIp,
       })

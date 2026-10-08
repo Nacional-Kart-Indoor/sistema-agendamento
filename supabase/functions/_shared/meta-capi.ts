@@ -16,6 +16,8 @@
 // Nunca lança exceção — o webhook da Asaas não pode falhar por causa do Meta.
 
 const GRAPH_API_VERSION = "v21.0";
+// O webhook da Asaas espera este envio terminar; o Meta não pode segurá-lo.
+const REQUEST_TIMEOUT_MS = 5000;
 const DEFAULT_PIXEL_ID = "28257199233881770";
 
 interface UserData {
@@ -119,12 +121,15 @@ export async function sendMetaCapiEvent(input: CapiEventInput): Promise<{ ok: bo
     };
     if (testEventCode) payload.test_event_code = testEventCode;
 
+    // Token vai no corpo, não na URL: mensagens de erro do fetch incluem a URL
+    // e acabariam no log do catch abaixo.
     const res = await fetch(
-      `https://graph.facebook.com/${GRAPH_API_VERSION}/${pixelId}/events?access_token=${encodeURIComponent(accessToken)}`,
+      `https://graph.facebook.com/${GRAPH_API_VERSION}/${pixelId}/events`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, access_token: accessToken }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       },
     );
 
