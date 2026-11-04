@@ -137,6 +137,87 @@ async function notifyPendingAlerts(supabase: any): Promise<{ pending: number; ok
   return { pending: pending.length, ok: result.ok };
 }
 
+// 5) Saúde do WhatsApp, mostrada como aviso no painel da atendente.
+//    O manager da Evolution pode exibir "Connected" com a sessão caída, então
+//    a fonte é o connectionState ao vivo. Também conta como falha a última
+//    mensagem da recepção (número fixo, não depende do telefone do cliente)
+//    ter falhado. Nunca lança: um problema aqui não pode parar o resto do job.
+const RECEPTION_FAILURE_WINDOW_HOURS = 6;
+
+async function checkWhatsAppHealth(supabase: any): Promise<{ ok: boolean; detail: string }> {
+  let ok = true;
+  let detail = 'Conectado';
+
+  try {
+    const apiUrl = (Deno.env.get('EVOLUTION_API_URL') ?? '').replace(/\/+$/, '');
+    const apiKey = Deno.env.get('EVOLUTION_API_KEY') ?? '';
+    const instance = Deno.env.get('EVOLUTION_INSTANCE') ?? '';
+
+    if (!apiUrl || !apiKey || !instance) {
+      ok = false;
+      detail = 'Evolution API não configurada no Supabase.';
+    } else {
+      try {
+        const res = await fetch(`${apiUrl}/instance/connectionState/${encodeURIComponent(instance)}`, {
+          headers: { apikey: apiKey },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) {
+          ok = false;
+          detail = `Evolution API respondeu ${res.status} ao consultar a conexão.`;
+        } else {
+          const body = await res.json();
+          const state = body?.instance?.state;
+          if (state !== 'open') {
+            ok = false;
+            detail = `WhatsApp desconectado (estado: ${state ?? 'desconhecido'}).`;
+          }
+        }
+      } catch (err) {
+        ok = false;
+        detail = `Servidor da Evolution API não respondeu (${String(err).slice(0, 120)}).`;
+      }
+    }
+
+    if (ok) {
+      const since = new Date(Date.now() - RECEPTION_FAILURE_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+      const { data: last } = await supabase
+        .from('whatsapp_message_queue')
+        .select('status')
+        .eq('message_type', 'reception_confirmation')
+        .in('status', ['sent', 'failed'])
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (last?.[0]?.status === 'failed') {
+        ok = false;
+        detail = 'Conectado, mas a última mensagem para a recepção falhou.';
+      }
+    }
+
+    const now = new Date().toISOString();
+    const { data: prev } = await supabase
+      .from('system_health')
+      .select('down_since')
+      .eq('component', 'whatsapp')
+      .maybeSingle();
+
+    const { error } = await supabase.from('system_health').upsert({
+      component: 'whatsapp',
+      ok,
+      detail,
+      checked_at: now,
+      down_since: ok ? null : (prev?.down_since ?? now),
+      ...(ok ? { last_ok_at: now } : {}),
+    });
+    if (error) logStep("Erro ao gravar system_health", { error: error.message });
+  } catch (err) {
+    logStep("Exceção na checagem do WhatsApp", { err: String(err) });
+  }
+
+  return { ok, detail };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -149,12 +230,15 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Primeiro: não depende do resto e precisa rodar mesmo se algo abaixo lançar.
+    const whatsapp = await checkWhatsAppHealth(supabase);
+
     const retried = await retryUnclaimedPostPayment(supabase);
     const withoutCode = await checkPaidWithoutCode(supabase);
     const sellflux = await checkSellfluxNotOk(supabase);
     const notified = await notifyPendingAlerts(supabase);
 
-    const summary = { retried, new_paid_without_code: withoutCode, new_sellflux_alerts: sellflux, notified };
+    const summary = { whatsapp, retried, new_paid_without_code: withoutCode, new_sellflux_alerts: sellflux, notified };
     logStep("Batch processed", summary);
 
     return new Response(JSON.stringify(summary), {

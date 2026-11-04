@@ -269,6 +269,33 @@ export type Database = {
           },
         ]
       }
+      system_health: {
+        Row: {
+          checked_at: string
+          component: string
+          detail: string | null
+          down_since: string | null
+          last_ok_at: string | null
+          ok: boolean
+        }
+        Insert: {
+          checked_at?: string
+          component: string
+          detail?: string | null
+          down_since?: string | null
+          last_ok_at?: string | null
+          ok: boolean
+        }
+        Update: {
+          checked_at?: string
+          component?: string
+          detail?: string | null
+          down_since?: string | null
+          last_ok_at?: string | null
+          ok?: boolean
+        }
+        Relationships: []
+      }
       time_slots: {
         Row: {
           created_at: string | null

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { LogOut, CalendarDays, Loader2, Phone, Users, Printer, Check, X, ShieldCheck, Flag, Trash2, CreditCard } from 'lucide-react';
+import { LogOut, CalendarDays, Loader2, Phone, Users, Printer, Check, X, ShieldCheck, Flag, Trash2, CreditCard, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -50,6 +50,61 @@ interface Holiday {
   origem: 'nacional' | 'municipal' | 'manual';
 }
 
+interface WhatsAppHealth {
+  ok: boolean;
+  detail: string | null;
+  checked_at: string;
+  down_since: string | null;
+}
+
+// O reconciliation-check grava o status a cada 30 min. Sem checagem há mais
+// que isso, o próprio monitor parou e o "ok" gravado não vale mais.
+const HEALTH_STALE_MINUTES = 90;
+const HEALTH_POLL_MS = 5 * 60 * 1000;
+
+function WhatsAppHealthBanner({ health }: { health: WhatsAppHealth | null }) {
+  if (!health) return null;
+
+  const stale = Date.now() - new Date(health.checked_at).getTime() > HEALTH_STALE_MINUTES * 60 * 1000;
+
+  if (!health.ok) {
+    return (
+      <div className="border-b border-destructive bg-destructive/10 print:hidden">
+        <div className="container max-w-4xl mx-auto px-4 py-3 flex gap-3">
+          <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+          <div className="text-sm space-y-1">
+            <p className="font-bold text-destructive">
+              WhatsApp fora do ar: clientes e recepção não estão recebendo as confirmações
+              {health.down_since && <> desde {format(new Date(health.down_since), "dd/MM 'às' HH:mm")}</>}.
+            </p>
+            {health.detail && <p className="text-muted-foreground">{health.detail}</p>}
+            <p>
+              Para resolver: no painel da Evolution, clique em <strong>Disconnect</strong> e conecte de novo
+              escaneando o QR code com o celular da loja (WhatsApp → Aparelhos conectados → Conectar um aparelho).
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (stale) {
+    return (
+      <div className="border-b border-secondary bg-secondary/10 print:hidden">
+        <div className="container max-w-4xl mx-auto px-4 py-2 flex items-center gap-3 text-sm">
+          <AlertTriangle className="w-4 h-4 text-secondary shrink-0" />
+          <p>
+            Não foi possível confirmar o status do WhatsApp (última checagem em{' '}
+            {format(new Date(health.checked_at), "dd/MM 'às' HH:mm")}). Avise o responsável pelo sistema.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 export default function Presenca() {
   const navigate = useNavigate();
   const { user, isStaff, loading: authLoading, signOut } = useAtendenteAuth();
@@ -65,6 +120,23 @@ export default function Presenca() {
   const [newHolidayDate, setNewHolidayDate] = useState<Date | undefined>();
   const [newHolidayDesc, setNewHolidayDesc] = useState('');
   const [savingHoliday, setSavingHoliday] = useState(false);
+
+  const [whatsappHealth, setWhatsappHealth] = useState<WhatsAppHealth | null>(null);
+
+  useEffect(() => {
+    if (!user || !isStaff) return;
+    const loadHealth = async () => {
+      const { data } = await supabase
+        .from('system_health')
+        .select('ok, detail, checked_at, down_since')
+        .eq('component', 'whatsapp')
+        .maybeSingle();
+      setWhatsappHealth(data ?? null);
+    };
+    loadHealth();
+    const timer = setInterval(loadHealth, HEALTH_POLL_MS);
+    return () => clearInterval(timer);
+  }, [user, isStaff]);
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/atendente/login', { replace: true });
@@ -234,6 +306,8 @@ export default function Presenca() {
           ))}
         </div>
       </header>
+
+      <WhatsAppHealthBanner health={whatsappHealth} />
 
       {/* Cabeçalho só na impressão */}
       <div className="hidden print:block px-4 pt-4">
