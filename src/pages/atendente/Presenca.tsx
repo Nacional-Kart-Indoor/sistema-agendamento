@@ -7,9 +7,9 @@ import { Card } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { format } from 'date-fns';
+import { endOfMonth, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { LogOut, CalendarDays, Loader2, Phone, Users, Printer, Check, X, ShieldCheck, Flag, Trash2, CreditCard } from 'lucide-react';
+import { LogOut, CalendarDays, Loader2, Phone, Users, Printer, Check, X, ShieldCheck, Flag, Trash2, CreditCard, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -44,6 +44,59 @@ function paymentLabel(method: string | null): string {
   }
 }
 
+interface MonthReservation {
+  reservation_code: string | null;
+  customer_name: string;
+  customer_phone: string;
+  customer_email: string;
+  num_pilots: number;
+  battery_type: string;
+  valor_total: number;
+  payment_method: string | null;
+  attendance_status: AttendanceStatus;
+  created_at: string | null;
+  time_slot: { date: string; start_time: string; tracks: { name: string } | null };
+}
+
+// O Supabase devolve no máximo 1000 linhas por consulta.
+const EXPORT_PAGE_SIZE = 1000;
+
+// Nome e e-mail vêm do formulário público: sem o apóstrofo, o Excel executaria
+// como fórmula qualquer valor que comece com = + - @.
+function safeText(value: string | null | undefined): string {
+  const text = value ?? '';
+  return /^\s*[=+\-@]/.test(text) ? `'${text}` : text;
+}
+
+function csvCell(value: string): string {
+  return /[;"\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+function buildMonthCsv(rows: MonthReservation[]): string {
+  const header = [
+    'Data', 'Horário', 'Código', 'Cliente', 'Telefone', 'E-mail', 'Pilotos',
+    'Bateria', 'Pista', 'Valor (R$)', 'Pagamento', 'Presença', 'Reservado em',
+  ];
+  const lines = rows.map((r) => [
+    // Meio-dia evita voltar um dia por causa do fuso.
+    format(new Date(`${r.time_slot.date}T12:00:00`), 'dd/MM/yyyy'),
+    r.time_slot.start_time.slice(0, 5),
+    safeText(r.reservation_code),
+    safeText(r.customer_name),
+    r.customer_phone.replace(/\D/g, ''),
+    safeText(r.customer_email),
+    String(r.num_pilots),
+    r.battery_type === 'kids' ? 'Kids' : 'Individual',
+    safeText(r.time_slot.tracks?.name),
+    Number(r.valor_total).toFixed(2).replace('.', ','),
+    paymentLabel(r.payment_method),
+    r.attendance_status === 'present' ? 'Presente' : r.attendance_status === 'absent' ? 'Faltou' : 'Pendente',
+    r.created_at ? format(new Date(r.created_at), 'dd/MM/yyyy HH:mm') : '',
+  ]);
+  // O BOM faz o Excel reconhecer UTF-8 (acentos).
+  return '\uFEFF' + [header, ...lines].map((line) => line.map(csvCell).join(';')).join('\r\n');
+}
+
 interface Holiday {
   data: string;
   descricao: string;
@@ -59,6 +112,9 @@ export default function Presenca() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  const [exportMonth, setExportMonth] = useState(format(new Date(), 'yyyy-MM'));
+  const [exporting, setExporting] = useState(false);
 
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [holidaysLoading, setHolidaysLoading] = useState(false);
@@ -148,6 +204,60 @@ export default function Presenca() {
       return;
     }
     setEntries((prev) => prev.map((e) => (e.id === entry.id ? { ...e, attendance_status: next } : e)));
+  };
+
+  const handleExportMonth = async () => {
+    setExporting(true);
+    try {
+      const [year, month] = exportMonth.split('-').map(Number);
+      const firstDay = new Date(year, month - 1, 1);
+      const from = format(firstDay, 'yyyy-MM-dd');
+      const to = format(endOfMonth(firstDay), 'yyyy-MM-dd');
+
+      const rows: MonthReservation[] = [];
+      for (let offset = 0; ; offset += EXPORT_PAGE_SIZE) {
+        // Ordem fixa por id: sem ela a paginação pode repetir ou pular linhas.
+        const { data, error } = await supabase
+          .from('reservations')
+          .select('reservation_code, customer_name, customer_phone, customer_email, num_pilots, battery_type, valor_total, payment_method, attendance_status, created_at, time_slot:time_slots!inner(date, start_time, tracks(name))')
+          .eq('status', 'paid')
+          .gte('time_slot.date', from)
+          .lte('time_slot.date', to)
+          .order('id')
+          .range(offset, offset + EXPORT_PAGE_SIZE - 1);
+        if (error) throw error;
+        const page = (data || []) as unknown as MonthReservation[];
+        rows.push(...page);
+        if (page.length < EXPORT_PAGE_SIZE) break;
+      }
+
+      if (rows.length === 0) {
+        toast.info('Nenhuma reserva paga nesse mês.');
+        return;
+      }
+
+      rows.sort((a, b) =>
+        a.time_slot.date.localeCompare(b.time_slot.date) ||
+        a.time_slot.start_time.localeCompare(b.time_slot.start_time),
+      );
+
+      const blob = new Blob([buildMonthCsv(rows)], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `reservas-nacional-kart-${exportMonth}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success(`${rows.length} reserva(s) exportada(s)`);
+    } catch (err) {
+      console.error('Erro ao baixar as reservas do mês:', err);
+      toast.error('Erro ao baixar as reservas do mês');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleMarkHoliday = async () => {
@@ -260,6 +370,28 @@ export default function Presenca() {
             </Popover>
             {loading && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />}
           </div>
+
+          <Card className="p-3 flex items-center gap-3 flex-wrap print:hidden">
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <Download className="w-4 h-4 text-primary" />
+              Reservas do mês
+            </span>
+            <Input
+              type="month"
+              aria-label="Mês das reservas"
+              value={exportMonth}
+              onChange={(e) => setExportMonth(e.target.value)}
+              className="w-auto"
+            />
+            <Button
+              variant="secondary"
+              onClick={handleExportMonth}
+              disabled={exporting || !/^\d{4}-(0[1-9]|1[0-2])$/.test(exportMonth)}
+            >
+              {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+              Baixar planilha
+            </Button>
+          </Card>
 
           <div className="grid grid-cols-4 gap-2 text-center">
             <Card className="p-3">
