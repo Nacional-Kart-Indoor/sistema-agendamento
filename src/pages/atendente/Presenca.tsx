@@ -12,6 +12,7 @@ import { ptBR } from 'date-fns/locale';
 import { LogOut, CalendarDays, Loader2, Phone, Users, Printer, Check, X, ShieldCheck, Flag, Trash2, CreditCard, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { buildMonthPdf, type MonthReservation } from '@/lib/month-report-pdf';
 
 type AttendanceStatus = 'present' | 'absent' | null;
 type Tab = 'presenca' | 'feriados';
@@ -44,58 +45,8 @@ function paymentLabel(method: string | null): string {
   }
 }
 
-interface MonthReservation {
-  reservation_code: string | null;
-  customer_name: string;
-  customer_phone: string;
-  customer_email: string;
-  num_pilots: number;
-  battery_type: string;
-  valor_total: number;
-  payment_method: string | null;
-  attendance_status: AttendanceStatus;
-  created_at: string | null;
-  time_slot: { date: string; start_time: string; tracks: { name: string } | null };
-}
-
 // O Supabase devolve no máximo 1000 linhas por consulta.
 const EXPORT_PAGE_SIZE = 1000;
-
-// Nome e e-mail vêm do formulário público: sem o apóstrofo, o Excel executaria
-// como fórmula qualquer valor que comece com = + - @.
-function safeText(value: string | null | undefined): string {
-  const text = value ?? '';
-  return /^\s*[=+\-@]/.test(text) ? `'${text}` : text;
-}
-
-function csvCell(value: string): string {
-  return /[;"\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-}
-
-function buildMonthCsv(rows: MonthReservation[]): string {
-  const header = [
-    'Data', 'Horário', 'Código', 'Cliente', 'Telefone', 'E-mail', 'Pilotos',
-    'Bateria', 'Pista', 'Valor (R$)', 'Pagamento', 'Presença', 'Reservado em',
-  ];
-  const lines = rows.map((r) => [
-    // Meio-dia evita voltar um dia por causa do fuso.
-    format(new Date(`${r.time_slot.date}T12:00:00`), 'dd/MM/yyyy'),
-    r.time_slot.start_time.slice(0, 5),
-    safeText(r.reservation_code),
-    safeText(r.customer_name),
-    r.customer_phone.replace(/\D/g, ''),
-    safeText(r.customer_email),
-    String(r.num_pilots),
-    r.battery_type === 'kids' ? 'Kids' : 'Individual',
-    safeText(r.time_slot.tracks?.name),
-    Number(r.valor_total).toFixed(2).replace('.', ','),
-    paymentLabel(r.payment_method),
-    r.attendance_status === 'present' ? 'Presente' : r.attendance_status === 'absent' ? 'Faltou' : 'Pendente',
-    r.created_at ? format(new Date(r.created_at), 'dd/MM/yyyy HH:mm') : '',
-  ]);
-  // O BOM faz o Excel reconhecer UTF-8 (acentos).
-  return '\uFEFF' + [header, ...lines].map((line) => line.map(csvCell).join(';')).join('\r\n');
-}
 
 interface Holiday {
   data: string;
@@ -241,11 +192,11 @@ export default function Presenca() {
         a.time_slot.start_time.localeCompare(b.time_slot.start_time),
       );
 
-      const blob = new Blob([buildMonthCsv(rows)], { type: 'text/csv;charset=utf-8;' });
+      const blob = await buildMonthPdf(rows, firstDay);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `reservas-nacional-kart-${exportMonth}.csv`;
+      link.download = `reservas-nacional-kart-${exportMonth}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -389,7 +340,7 @@ export default function Presenca() {
               disabled={exporting || !/^\d{4}-(0[1-9]|1[0-2])$/.test(exportMonth)}
             >
               {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
-              Baixar planilha
+              Baixar PDF do mês
             </Button>
           </Card>
 
